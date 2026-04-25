@@ -65,11 +65,17 @@ class RedactingFormatter(logging.Formatter):
     """Plain-text formatter that redacts sensitive data."""
 
     def format(self, record: logging.LogRecord) -> str:
-        record.msg = _redact(str(record.msg))
-        if record.args:
-            # Redact arguments too
-            record.args = tuple(_redact(str(arg)) for arg in record.args)
-        return super().format(record)
+        # Do not mutate the shared LogRecord — other handlers may process it.
+        original_msg = record.msg
+        original_args = record.args
+        try:
+            record.msg = _redact(str(record.msg))
+            if record.args:
+                record.args = tuple(_redact(str(arg)) for arg in record.args)
+            return super().format(record)
+        finally:
+            record.msg = original_msg
+            record.args = original_args
 
 
 def setup_logging() -> None:

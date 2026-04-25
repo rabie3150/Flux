@@ -109,13 +109,18 @@ async def reject_ingredients(
 async def delete_ingredients(
     db: AsyncSession, ingredient_ids: list[str]
 ) -> int:
-    """Physically delete ingredients. Returns count deleted."""
+    """Physically delete ingredients and their files. Returns count deleted."""
+    import os
+
     result = await db.execute(
         select(Ingredient).where(Ingredient.id.in_(ingredient_ids))
     )
     ingredients = result.scalars().all()
     count = len(ingredients)
     for ing in ingredients:
+        # caveman-fix 2026-04-25: delete file from disk before DB row
+        if ing.file_path and os.path.exists(ing.file_path):
+            os.unlink(ing.file_path)
         await db.delete(ing)
     if count:
         await db.commit()

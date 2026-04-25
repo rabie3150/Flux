@@ -33,17 +33,6 @@ class PipelineUpdate(BaseModel):
     enabled: bool | None = None
 
 
-class PipelineOut(BaseModel):
-    id: str
-    name: str
-    plugin_id: str
-    enabled: bool
-    config_json: str
-    created_at: str | None
-
-    model_config = {"from_attributes": True}
-
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

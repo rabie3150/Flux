@@ -25,16 +25,26 @@ class LockBusyError(Exception):
     """Raised when the render lock is already held."""
 
 
-def _acquire_unix(fd: int, blocking: bool) -> bool:
-    """Unix advisory lock via fcntl."""
+def _acquire_unix(fd: int, timeout: float) -> bool:
+    """Unix advisory lock via fcntl with optional timeout."""
     import fcntl
 
-    try:
-        flags = fcntl.LOCK_EX if blocking else fcntl.LOCK_NB | fcntl.LOCK_EX
-        fcntl.flock(fd, flags)
-        return True
-    except (OSError, BlockingIOError, IOError):
-        return False
+    if timeout <= 0:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_NB | fcntl.LOCK_EX)
+            return True
+        except (OSError, BlockingIOError, IOError):
+            return False
+
+    deadline = time.monotonic() + timeout
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_NB | fcntl.LOCK_EX)
+            return True
+        except (OSError, BlockingIOError, IOError):
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.1)
 
 
 def _release_unix(fd: int) -> None:
@@ -96,7 +106,7 @@ class RenderLock:
         # Unix path
         try:
             self._fd = os.open(str(_LOCK_FILE), os.O_RDWR | os.O_CREAT, 0o666)
-            acquired = _acquire_unix(self._fd, blocking=timeout > 0)
+            acquired = _acquire_unix(self._fd, timeout=timeout)
             if acquired:
                 self._acquired = True
                 return True

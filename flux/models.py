@@ -13,6 +13,7 @@ from typing import Optional
 from sqlalchemy import (
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -148,7 +149,7 @@ class Ingredient(Base):
     )  # pending, approved, rejected
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
-    duration_secs: Mapped[Optional[float]] = mapped_column(Integer)
+    duration_secs: Mapped[Optional[float]] = mapped_column(Float)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     pipeline: Mapped["Pipeline"] = relationship("Pipeline", back_populates="ingredients")

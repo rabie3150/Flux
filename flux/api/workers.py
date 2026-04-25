@@ -49,7 +49,7 @@ def _serialize_worker(w: PlatformWorker) -> dict[str, Any]:
         "id": w.id,
         "platform": w.platform,
         "display_name": w.display_name,
-        "credentials_json": w.credentials_json,
+        # credentials_json intentionally omitted — never expose secrets
         "schedule_cron": w.schedule_cron,
         "caption_template_override": w.caption_template_override,
         "hashtags_json": w.hashtags_json,
