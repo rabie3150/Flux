@@ -30,11 +30,34 @@ The Quran pipeline is the **reference implementation** of the plugin interface. 
 ## 2. Environment & Tooling
 
 ### 2.1 Development Machine (Laptop)
-- Python 3.11, venv, VS Code
+- Python 3.11+, venv, VS Code
 - SQLite (same version as Termux)
 - FFmpeg (same major version as Termux)
 - `pytest`, `httpx`, `pytest-asyncio`
 - Git with conventional commits
+
+**Where to develop?**
+
+| Environment | When to Use | Limitations |
+|-------------|-------------|-------------|
+| **Windows (direct)** ⭐ Primary | Phases 0–4 (foundation → core → fetch → render → distribute) | `termux-wake-lock`, `termux-boot`, Android storage paths don't work. Use Windows paths for dev. |
+| **WSL** | If you prefer Linux/Unix tooling | Behaves like Termux; good for bash script testing. Not required. |
+| **Termux (phone)** | Phase 5+ integration, device tests, ARM validation | Slower iteration; use only for final validation and soak tests. |
+
+**Phase-by-phase dev environment:**
+
+| Phase | Windows Dev? | Phone Needed? |
+|-------|-------------|---------------|
+| 0 Foundation | ✅ Yes | ❌ No |
+| 1 Core Engine | ✅ Yes | ❌ No |
+| 2 Fetch (APIs) | ✅ Yes | ❌ No |
+| 3 Render (FFmpeg) | ✅ Yes (test filtergraphs) | ⚠️ Final ARM performance test |
+| 4 Distribute (APIs) | ✅ Yes | ⚠️ Final Instagrapi/YouTube test |
+| 5 Scheduler | ✅ Yes | ⚠️ Doze mode test only |
+| 6 Integration | ⚠️ Simulate | ✅ Yes (full pipeline on device) |
+| 7 Hardening | ⚠️ Simulate | ✅ Yes (48-hour soak test) |
+
+> **Rule:** Develop on Windows (or WSL). The phone is for *validation*, not daily iteration.
 
 ### 2.2 Test Device (Phone)
 - Termux from F-Droid
