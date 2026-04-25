@@ -33,7 +33,7 @@ def load_plugins() -> None:
 
         try:
             plugin_module = importlib.import_module(f"flux.plugins.{module_name}.plugin")
-        except ImportError as e:
+        except Exception as e:
             logger.warning("Failed to import plugin module %s: %s", module_name, e)
             continue
 

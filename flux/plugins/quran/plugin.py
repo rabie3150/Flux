@@ -47,7 +47,7 @@ class QuranPlugin(ContentPlugin):
     ) -> RenderResult:
         """Mock render."""
         return RenderResult(
-            file_path="/tmp/mock_render.mp4",
+            file_path=None,  # mock — no actual file
             caption="Bismillah",
             metadata={"mock": True},
         )
