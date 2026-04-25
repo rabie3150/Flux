@@ -1,9 +1,8 @@
 """Flux application configuration."""
 
-import secrets
 from pathlib import Path
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,6 +57,22 @@ class Settings(BaseSettings):
     def expand_user_path(cls, v: str) -> Path:
         return Path(v).expanduser()
 
+    @field_validator("database_url", "quran_text_db_url", mode="after")
+    @classmethod
+    def expand_sqlite_tilde(cls, v: str) -> str:
+        if v.startswith("sqlite:///~/"):
+            # Expand ~ and ensure forward slashes for SQLAlchemy
+            home = str(Path("~").expanduser()).replace("\\", "/")
+            return v.replace("sqlite:///~/", f"sqlite:///{home}/")
+        return v
+
+    @model_validator(mode="after")
+    def validate_master_key(self) -> "Settings":
+        if self.is_production and not self.flux_master_key:
+            raise ValueError("FLUX_MASTER_KEY is required when running in production.")
+        return self
+
+
     @property
     def is_production(self) -> bool:
         return self.flux_env.lower() == "production"
@@ -65,7 +80,9 @@ class Settings(BaseSettings):
 
 def generate_master_key() -> str:
     """Generate a new Fernet-compatible master key."""
-    return secrets.token_urlsafe(32)
+    from cryptography.fernet import Fernet
+
+    return Fernet.generate_key().decode("utf-8")
 
 
 settings = Settings()

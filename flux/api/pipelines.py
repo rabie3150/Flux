@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from flux.core import pipeline as pipeline_service
 from flux.db import get_db
+from flux.logger import get_logger
 from flux.models import Pipeline
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/pipelines", tags=["pipelines"])
 
@@ -87,6 +90,7 @@ async def get_pipeline(
     """Get pipeline details."""
     pipeline = await pipeline_service.get_pipeline(db, pipeline_id)
     if pipeline is None:
+        logger.warning("Pipeline not found: %s", pipeline_id)
         raise HTTPException(status_code=404, detail="Pipeline not found")
     return _serialize_pipeline(pipeline)
 
@@ -106,7 +110,9 @@ async def update_pipeline(
         enabled=data.enabled,
     )
     if pipeline is None:
+        logger.warning("Pipeline not found for update: %s", pipeline_id)
         raise HTTPException(status_code=404, detail="Pipeline not found")
+    logger.info("Pipeline updated: %s", pipeline_id)
     return _serialize_pipeline(pipeline)
 
 
@@ -118,7 +124,9 @@ async def delete_pipeline(
     """Delete a pipeline and all related data."""
     deleted = await pipeline_service.delete_pipeline(db, pipeline_id)
     if not deleted:
+        logger.warning("Pipeline not found for delete: %s", pipeline_id)
         raise HTTPException(status_code=404, detail="Pipeline not found")
+    logger.info("Pipeline deleted: %s", pipeline_id)
     return {"deleted": pipeline_id}
 
 
@@ -137,6 +145,7 @@ async def pipeline_stats(
 
     pipeline = await pipeline_service.get_pipeline(db, pipeline_id)
     if pipeline is None:
+        logger.warning("Pipeline not found for stats: %s", pipeline_id)
         raise HTTPException(status_code=404, detail="Pipeline not found")
 
     # Count ingredients by status
@@ -174,10 +183,12 @@ async def attach_worker(
     """Attach a platform worker to this pipeline."""
     ok = await pipeline_service.attach_worker(db, pipeline_id, req.worker_id)
     if not ok:
+        logger.warning("Worker attach failed: pipeline=%s worker=%s", pipeline_id, req.worker_id)
         raise HTTPException(
             status_code=400,
             detail="Pipeline or worker not found, or already attached",
         )
+    logger.info("Worker attached: pipeline=%s worker=%s", pipeline_id, req.worker_id)
     return {"attached": req.worker_id}
 
 
@@ -190,7 +201,9 @@ async def detach_worker(
     """Detach a platform worker from this pipeline."""
     ok = await pipeline_service.detach_worker(db, pipeline_id, worker_id)
     if not ok:
+        logger.warning("Worker detach failed: pipeline=%s worker=%s", pipeline_id, worker_id)
         raise HTTPException(status_code=404, detail="Attachment not found")
+    logger.info("Worker detached: pipeline=%s worker=%s", pipeline_id, worker_id)
     return {"detached": worker_id}
 
 
@@ -202,6 +215,7 @@ async def list_pipeline_workers(
     """List workers attached to this pipeline."""
     pipeline = await pipeline_service.get_pipeline(db, pipeline_id)
     if pipeline is None:
+        logger.warning("Pipeline not found for worker list: %s", pipeline_id)
         raise HTTPException(status_code=404, detail="Pipeline not found")
 
     workers = await pipeline_service.get_pipeline_workers(db, pipeline_id)

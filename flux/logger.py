@@ -20,16 +20,30 @@ from flux.config import settings
 # Patterns to redact from log output
 _REDACT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Telegram bot token: 123456:ABC-DEF... -> <redacted>
-    (re.compile(r"(\d+:[A-Za-z0-9_-]{35})", re.IGNORECASE), "<telegram-token-redacted>"),
+    (re.compile(r"(\d+:[A-Za-z0-9_-]{30,45})", re.IGNORECASE), "<telegram-token-redacted>"),
     # Generic bearer/token patterns
-    (re.compile(r'(token["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_-]{20,})', re.IGNORECASE), r"\1<token-redacted>"),
-    (re.compile(r'(bearer["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_-]{20,})', re.IGNORECASE), r"\1<token-redacted>"),
+    (re.compile(r'(token["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<token-redacted>"),
+    (re.compile(r'(bearer["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<token-redacted>"),
     # API keys
-    (re.compile(r'(api[_-]?key["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_-]{16,})', re.IGNORECASE), r"\1<key-redacted>"),
+    (re.compile(r'(api[_-]?key["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<key-redacted>"),
+    # API secrets
+    (re.compile(r'(api[_-]?secret["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<secret-redacted>"),
     # Client secrets
-    (re.compile(r'(client[_-]?secret["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_-]{16,})', re.IGNORECASE), r"\1<secret-redacted>"),
+    (re.compile(r'(client[_-]?secret["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<secret-redacted>"),
+    # Passwords
+    (re.compile(r'(pass(word|wd)?["\']?\s*[:=]\s*["\']?)([^\s"\']{4,})', re.IGNORECASE), r"\1<password-redacted>"),
+    # Authorization header
+    (re.compile(r'(authorization["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{10,})', re.IGNORECASE), r"\1<auth-redacted>"),
+    # Session / cookie
+    (re.compile(r'(session["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<session-redacted>"),
+    (re.compile(r'(cookie["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<cookie-redacted>"),
+    # refresh_token / access_token
+    (re.compile(r'(refresh[_-]?token["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<token-redacted>"),
+    (re.compile(r'(access[_-]?token["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<token-redacted>"),
+    # Private keys
+    (re.compile(r'(private[_-]?key["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<key-redacted>"),
     # Master key / Fernet key
-    (re.compile(r'(FLUX_MASTER_KEY["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_=-]{20,})', re.IGNORECASE), r"\1<master-key-redacted>"),
+    (re.compile(r'(FLUX_MASTER_KEY["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+=/\-]{20,})', re.IGNORECASE), r"\1<master-key-redacted>"),
 ]
 
 
@@ -56,8 +70,16 @@ class JsonFormatter(logging.Formatter):
             log_dict["worker_id"] = record.worker_id
         if hasattr(record, "event_type"):
             log_dict["event_type"] = record.event_type
+        if hasattr(record, "metadata") and record.metadata:
+            try:
+                redacted_metadata = json.loads(_redact(json.dumps(record.metadata, default=str)))
+            except Exception as e:
+                redacted_metadata = {"error": f"Failed to serialize metadata: {e}"}
+            log_dict["metadata"] = redacted_metadata
         if record.exc_info:
-            log_dict["exception"] = self.formatException(record.exc_info)
+            # Redact exception tracebacks too — they may contain tokens in locals
+            tb_text = self.formatException(record.exc_info)
+            log_dict["exception"] = _redact(tb_text)
         return json.dumps(log_dict, ensure_ascii=False)
 
 
@@ -65,17 +87,10 @@ class RedactingFormatter(logging.Formatter):
     """Plain-text formatter that redacts sensitive data."""
 
     def format(self, record: logging.LogRecord) -> str:
-        # Do not mutate the shared LogRecord — other handlers may process it.
-        original_msg = record.msg
-        original_args = record.args
-        try:
-            record.msg = _redact(str(record.msg))
-            if record.args:
-                record.args = tuple(_redact(str(arg)) for arg in record.args)
-            return super().format(record)
-        finally:
-            record.msg = original_msg
-            record.args = original_args
+        # Format the entire string (including args and traceback) first
+        formatted = super().format(record)
+        # Redact any sensitive tokens from the final string
+        return _redact(formatted)
 
 
 def setup_logging() -> None:
@@ -106,15 +121,18 @@ def setup_logging() -> None:
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / "flux.log"
 
-    file_handler = logging.handlers.RotatingFileHandler(
-        filename=str(log_file),
-        maxBytes=5 * 1024 * 1024,  # 5 MB
-        backupCount=5,
-        encoding="utf-8",
-    )
-    file_handler.setFormatter(JsonFormatter())
-    file_handler.setLevel(logging.INFO)
-    root.addHandler(file_handler)
+    try:
+        file_handler = logging.handlers.RotatingFileHandler(
+            filename=str(log_file),
+            maxBytes=5 * 1024 * 1024,  # 5 MB
+            backupCount=5,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(JsonFormatter())
+        file_handler.setLevel(logging.INFO)
+        root.addHandler(file_handler)
+    except OSError as e:
+        root.warning("[Flux] Could not create file log handler at %s: %s", log_file, e)
 
     # Reduce noise from third-party libraries
     logging.getLogger("apscheduler").setLevel(logging.WARNING)
@@ -146,6 +164,12 @@ def log_activity(
     Database persistence happens via the activity_log service.
     """
     logger = get_logger("flux.activity")
+
+    # Normalize level names
+    level = level.lower()
+    if level == "warn":
+        level = "warning"
+
     extra: dict[str, Any] = {
         "event_type": event_type,
     }
@@ -154,5 +178,9 @@ def log_activity(
     if worker_id:
         extra["worker_id"] = worker_id
 
-    log_method = getattr(logger, level.lower(), logger.info)
+    # Attach metadata to extra dict if provided
+    if metadata:
+        extra["metadata"] = metadata
+
+    log_method = getattr(logger, level, logger.info)
     log_method(message, extra=extra)

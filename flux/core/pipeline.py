@@ -8,7 +8,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from flux.logger import get_logger
 from flux.models import Pipeline, PipelineWorker, PlatformWorker
+
+logger = get_logger(__name__)
 
 
 async def list_pipelines(db: AsyncSession) -> list[Pipeline]:
@@ -40,6 +43,7 @@ async def create_pipeline(
     db.add(pipeline)
     await db.commit()
     await db.refresh(pipeline)
+    logger.info("Pipeline created: %s (%s)", pipeline.name, pipeline.id)
     return pipeline
 
 
@@ -64,6 +68,7 @@ async def update_pipeline(
 
     await db.commit()
     await db.refresh(pipeline)
+    logger.info("Pipeline updated: %s", pipeline.id)
     return pipeline
 
 
@@ -74,6 +79,7 @@ async def delete_pipeline(db: AsyncSession, pipeline_id: str) -> bool:
         return False
     await db.delete(pipeline)
     await db.commit()
+    logger.info("Pipeline deleted: %s", pipeline_id)
     return True
 
 
@@ -104,6 +110,7 @@ async def attach_worker(
     junction = PipelineWorker(pipeline_id=pipeline_id, worker_id=worker_id)
     db.add(junction)
     await db.commit()
+    logger.info("Worker attached to pipeline: %s -> %s", worker_id, pipeline_id)
     return True
 
 
@@ -122,6 +129,7 @@ async def detach_worker(
         return False
     await db.delete(junction)
     await db.commit()
+    logger.info("Worker detached from pipeline: %s -> %s", worker_id, pipeline_id)
     return True
 
 
@@ -129,8 +137,9 @@ async def get_pipeline_workers(
     db: AsyncSession, pipeline_id: str
 ) -> list[PlatformWorker]:
     """Return all workers attached to a pipeline."""
-    pipeline = await get_pipeline(db, pipeline_id)
-    if pipeline is None:
-        return []
-    # Workers are loaded via relationship
-    return list(pipeline.workers)
+    result = await db.execute(
+        select(PlatformWorker)
+        .join(PipelineWorker)
+        .where(PipelineWorker.pipeline_id == pipeline_id)
+    )
+    return list(result.scalars().all())

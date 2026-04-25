@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import time
 from contextlib import asynccontextmanager
 
@@ -16,6 +17,7 @@ from flux.api.workers import router as workers_router
 from flux.config import settings
 from flux.db import init_db
 from flux.logger import get_logger, setup_logging
+from flux.plugins import load_plugins
 from flux.scheduler import init_scheduler, shutdown_scheduler
 
 logger = get_logger(__name__)
@@ -25,19 +27,37 @@ _START_TIME = time.time()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan events."""
-    setup_logging()
+    try:
+        setup_logging()
+    except Exception as e:
+        # If logging setup fails, we can't log it — print to stderr as last resort
+        sys.stderr.write(f"[FATAL] Logging setup failed: {e}\n")
+        raise
+
     logger.info("[Flux] Starting in %s mode", settings.flux_env)
     logger.info("[Flux] Database: %s", settings.database_url)
     logger.info("[Flux] Storage: %s", settings.storage_path)
 
-    # Create database tables
-    await init_db()
-    logger.info("[Flux] Database initialized")
+    try:
+        await init_db()
+        logger.info("[Flux] Database initialized")
+    except Exception as e:
+        logger.error("[Flux] Database initialization failed: %s", e)
+        raise
 
-    # Initialize scheduler
-    scheduler = init_scheduler()
-    scheduler.start()
-    logger.info("[Flux] Scheduler started")
+    try:
+        load_plugins()
+    except Exception as e:
+        logger.error("[Flux] Plugin loading failed: %s", e)
+        raise
+
+    try:
+        scheduler = init_scheduler()
+        scheduler.start()
+        logger.info("[Flux] Scheduler started")
+    except Exception as e:
+        logger.error("[Flux] Scheduler startup failed: %s", e)
+        raise
 
     yield
 

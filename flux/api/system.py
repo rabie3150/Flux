@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import time
 from typing import Any
 
@@ -12,7 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from flux.config import settings
 from flux.db import get_db
+from flux.logger import get_logger
 from flux.models import ActivityLog, Pipeline, PlatformWorker, Setting
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/system", tags=["system"])
 
@@ -89,17 +93,16 @@ async def update_setting(
     update: SettingUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Create or update a runtime setting."""
-    import json
-
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
 
     if setting is None:
         setting = Setting(key=key, value_json=json.dumps(update.value))
         db.add(setting)
+        logger.info("Setting created: %s", key)
     else:
         setting.value_json = json.dumps(update.value)
+        logger.info("Setting updated: %s", key)
 
     await db.commit()
     await db.refresh(setting)
@@ -114,9 +117,11 @@ async def delete_setting(
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
     if setting is None:
+        logger.warning("Setting not found: %s", key)
         raise HTTPException(status_code=404, detail="Setting not found")
     await db.delete(setting)
     await db.commit()
+    logger.info("Setting deleted: %s", key)
     return {"deleted": key}
 
 

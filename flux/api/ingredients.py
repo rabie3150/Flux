@@ -10,7 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from flux.core import ingredients as ingredient_service
 from flux.db import get_db
+from flux.logger import get_logger
 from flux.models import Ingredient
+
+logger = get_logger(__name__)
 
 router = APIRouter(tags=["ingredients"])
 
@@ -80,6 +83,7 @@ async def approve_ingredients(
 ) -> dict[str, Any]:
     """Approve ingredients by ID."""
     count = await ingredient_service.approve_ingredients(db, req.ingredient_ids)
+    logger.info("Approved %d ingredients for pipeline %s", count, pipeline_id)
     return {"approved": count, "ingredient_ids": req.ingredient_ids}
 
 
@@ -91,6 +95,7 @@ async def reject_ingredients(
 ) -> dict[str, Any]:
     """Reject ingredients by ID."""
     count = await ingredient_service.reject_ingredients(db, req.ingredient_ids)
+    logger.info("Rejected %d ingredients for pipeline %s", count, pipeline_id)
     return {"rejected": count, "ingredient_ids": req.ingredient_ids}
 
 
@@ -102,4 +107,5 @@ async def delete_ingredients(
 ) -> dict[str, Any]:
     """Physically delete ingredients."""
     count = await ingredient_service.delete_ingredients(db, req.ingredient_ids)
+    logger.info("Deleted %d ingredients for pipeline %s", count, pipeline_id)
     return {"deleted": count, "ingredient_ids": req.ingredient_ids}

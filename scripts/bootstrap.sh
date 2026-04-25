@@ -46,7 +46,7 @@ mkdir -p /storage/emulated/0/Flux/backups
 # 7. Initialize database (if not exists)
 if [ ! -f "$FLUX_DIR/app.db" ]; then
     echo "[Flux] Initializing database..."
-    python -c "from flux.db import engine, Base; import asyncio; asyncio.run(Base.metadata.create_all(engine))" 2>/dev/null || true
+    python -c "import asyncio; from flux.db import init_db; asyncio.run(init_db())" 2>/dev/null || true
 fi
 
 # 8. Enable WAL mode

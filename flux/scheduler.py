@@ -30,7 +30,7 @@ def init_scheduler() -> AsyncIOScheduler:
     global _scheduler
 
     # Use sync SQLite URL for APScheduler job store
-    jobstore_url = settings.database_url.replace("sqlite:///", "sqlite://")
+    jobstore_url = settings.database_url
 
     jobstores = {
         "default": SQLAlchemyJobStore(url=jobstore_url),

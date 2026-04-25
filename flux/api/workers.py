@@ -6,11 +6,14 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from flux.core import workers as worker_service
 from flux.db import get_db
+from flux.logger import get_logger
 from flux.models import PlatformWorker
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
 
@@ -71,8 +74,7 @@ async def list_workers(
     db: AsyncSession = Depends(get_db),
 ) -> list[dict[str, Any]]:
     """List all platform workers."""
-    result = await db.execute(select(PlatformWorker))
-    workers = result.scalars().all()
+    workers = await worker_service.list_workers(db)
     return [_serialize_worker(w) for w in workers]
 
 
@@ -82,20 +84,17 @@ async def create_worker(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Create a new platform worker."""
-    import json
-
-    worker = PlatformWorker(
+    worker = await worker_service.create_worker(
+        db,
         platform=data.platform,
         display_name=data.display_name,
-        credentials_json=json.dumps(data.credentials),
+        credentials=data.credentials,
         schedule_cron=data.schedule_cron,
         caption_template_override=data.caption_template_override,
-        hashtags_json=json.dumps(data.hashtags),
+        hashtags=data.hashtags,
         enabled=data.enabled,
     )
-    db.add(worker)
-    await db.commit()
-    await db.refresh(worker)
+    logger.info("Worker created: %s", worker.id)
     return _serialize_worker(worker)
 
 
@@ -105,11 +104,9 @@ async def get_worker(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Get worker details."""
-    result = await db.execute(
-        select(PlatformWorker).where(PlatformWorker.id == worker_id)
-    )
-    worker = result.scalar_one_or_none()
+    worker = await worker_service.get_worker(db, worker_id)
     if worker is None:
+        logger.warning("Worker not found: %s", worker_id)
         raise HTTPException(status_code=404, detail="Worker not found")
     return _serialize_worker(worker)
 
@@ -121,30 +118,21 @@ async def update_worker(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Update a worker (partial update)."""
-    import json
-
-    result = await db.execute(
-        select(PlatformWorker).where(PlatformWorker.id == worker_id)
+    worker = await worker_service.update_worker(
+        db,
+        worker_id,
+        display_name=data.display_name,
+        credentials=data.credentials,
+        schedule_cron=data.schedule_cron,
+        caption_template_override=data.caption_template_override,
+        hashtags=data.hashtags,
+        enabled=data.enabled,
     )
-    worker = result.scalar_one_or_none()
     if worker is None:
+        logger.warning("Worker not found for update: %s", worker_id)
         raise HTTPException(status_code=404, detail="Worker not found")
 
-    if data.display_name is not None:
-        worker.display_name = data.display_name
-    if data.credentials is not None:
-        worker.credentials_json = json.dumps(data.credentials)
-    if data.schedule_cron is not None:
-        worker.schedule_cron = data.schedule_cron
-    if data.caption_template_override is not None:
-        worker.caption_template_override = data.caption_template_override
-    if data.hashtags is not None:
-        worker.hashtags_json = json.dumps(data.hashtags)
-    if data.enabled is not None:
-        worker.enabled = data.enabled
-
-    await db.commit()
-    await db.refresh(worker)
+    logger.info("Worker updated: %s", worker_id)
     return _serialize_worker(worker)
 
 
@@ -154,12 +142,10 @@ async def delete_worker(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
     """Delete a platform worker."""
-    result = await db.execute(
-        select(PlatformWorker).where(PlatformWorker.id == worker_id)
-    )
-    worker = result.scalar_one_or_none()
-    if worker is None:
+    deleted = await worker_service.delete_worker(db, worker_id)
+    if not deleted:
+        logger.warning("Worker not found for delete: %s", worker_id)
         raise HTTPException(status_code=404, detail="Worker not found")
-    await db.delete(worker)
-    await db.commit()
+    
+    logger.info("Worker deleted: %s", worker_id)
     return {"deleted": worker_id}

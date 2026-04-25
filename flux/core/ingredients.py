@@ -9,7 +9,10 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from flux.logger import get_logger
 from flux.models import Ingredient
+
+logger = get_logger(__name__)
 
 
 async def list_ingredients(
@@ -65,6 +68,7 @@ async def create_ingredient(
     db.add(ingredient)
     await db.commit()
     await db.refresh(ingredient)
+    logger.info("Ingredient created: %s (%s) for pipeline %s", ingredient.type, ingredient.id, pipeline_id)
     return ingredient
 
 
@@ -85,6 +89,7 @@ async def approve_ingredients(
             count += 1
     if count:
         await db.commit()
+        logger.info("Approved %d ingredients", count)
     return count
 
 
@@ -103,6 +108,7 @@ async def reject_ingredients(
             count += 1
     if count:
         await db.commit()
+        logger.info("Rejected %d ingredients", count)
     return count
 
 
@@ -120,10 +126,14 @@ async def delete_ingredients(
     for ing in ingredients:
         # caveman-fix 2026-04-25: delete file from disk before DB row
         if ing.file_path and os.path.exists(ing.file_path):
-            os.unlink(ing.file_path)
+            try:
+                os.unlink(ing.file_path)
+            except OSError as e:
+                logger.warning("Failed to delete file %s: %s", ing.file_path, e)
         await db.delete(ing)
     if count:
         await db.commit()
+        logger.info("Deleted %d ingredients", count)
     return count
 
 

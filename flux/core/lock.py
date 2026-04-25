@@ -12,6 +12,9 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from flux.config import settings
+from flux.logger import get_logger
+
+logger = get_logger(__name__)
 
 _LOCK_FILE: Path = Path(settings.storage_path) / ".flux-render.lock"
 
@@ -123,6 +126,8 @@ class RenderLock:
         if not self._acquired:
             return
 
+        logger.debug("Render lock released")
+
         if os.name != "nt" and self._fd is not None:
             _release_unix(self._fd)
             try:
@@ -151,6 +156,8 @@ async def render_lock_ctx(timeout: float = 0.0):
     """
     lock = RenderLock()
     acquired = await lock.acquire(timeout=timeout)
+    if not acquired:
+        logger.warning("Render lock acquisition failed (timeout=%s)", timeout)
     try:
         yield acquired
     finally:
