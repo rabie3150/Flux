@@ -1,20 +1,13 @@
 # Logger Documentation
 
-## Overview
+## What This System Does
 
-Flux uses a highly robust, dual-output logging system designed for both developer experience and production observability. It ensures complete security through deep redaction while providing structured JSON logs for external analysis. 
+Flux uses a dual-output logging system:
 
-1. **Console** — Human-readable plain text for development, fully redacted.
-2. **File** — Structured JSON logs with rotation for production analysis, with structured metadata and redacted exception tracebacks.
+1. **Console** — Human-readable plain text for development
+2. **File** — Structured JSON logs with rotation for production analysis
 
-All logs automatically redact sensitive tokens (API keys, bot tokens, secrets, cookies, passwords) to prevent credential leakage in log files. It recursively redacts structured metadata objects to ensure deep security.
-
-## Files
-
-| File | Purpose |
-|------|---------|
-| `flux/logger.py` | Main logging system implementation, formatters, and helpers |
-| `.agents/skills/flux-review/scripts/audit_logging.py` | Automated audit script to ensure codebase-wide logging compliance |
+All logs automatically redact sensitive tokens (API keys, bot tokens, secrets, passwords, session cookies) to prevent credential leakage in log files. Exception tracebacks are also redacted before writing.
 
 ## Current Status
 
@@ -23,22 +16,27 @@ All logs automatically redact sensitive tokens (API keys, bot tokens, secrets, c
 | JSON file formatter | ✅ Implemented | 1 |
 | Redacting text formatter | ✅ Implemented | 1 |
 | File rotation (5 MB x 5 backups) | ✅ Implemented | 1 |
-| Auto-redaction patterns | ✅ Implemented | 1 |
-| Deep metadata redaction | ✅ Implemented | 1 |
+| Auto-redaction patterns (14 patterns) | ✅ Implemented | 1 |
 | Traceback redaction | ✅ Implemented | 1 |
+| Metadata redaction in structured logs | ✅ Implemented | 1 |
 | Activity log helper | ✅ Implemented | 1 |
 | Third-party noise reduction | ✅ Implemented | 1 |
+| Logging coverage (API + services) | ✅ Implemented | 1 |
 | Log streaming API | 🚧 Pending | 7 |
+| Log level override from settings | 🚧 Pending | 3 |
 
 ## Architecture
 
 ```
 Log Event
     ├── Console Handler (StreamHandler)
-    │       └── RedactingFormatter → formats string entirely, then applies deep redaction
+    │       └── RedactingFormatter → plain text with redaction
     │
     └── File Handler (RotatingFileHandler)
-            └── JsonFormatter → extracts structured metadata, redacts strings, outputs JSON
+            └── JsonFormatter → structured JSON
+                ├── message (redacted)
+                ├── exception traceback (redacted)
+                └── metadata dict (redacted)
 ```
 
 ## Redaction Rules
@@ -51,12 +49,16 @@ Log Event
 | API key | `api_key=abc123...` | `api_key=<key-redacted>` |
 | API secret | `api_secret=abc123...` | `api_secret=<secret-redacted>` |
 | Client secret | `client_secret=abc123...` | `client_secret=<secret-redacted>` |
-| Password | `password=abc123...` | `password=<password-redacted>` |
-| Authorization | `authorization: Bearer...` | `authorization:<auth-redacted>` |
-| Session/Cookie | `session=abc123...` | `session=<session-redacted>` |
-| Access/Refresh Tokens | `access_token=abc123...` | `access_token=<token-redacted>` |
-| Private key | `private_key=abc123...` | `private_key=<key-redacted>` |
+| Password | `password=secret123` | `password=<password-redacted>` |
+| Authorization header | `authorization=Bearer...` | `authorization=<auth-redacted>` |
+| Session | `session=abc123...` | `session=<session-redacted>` |
+| Cookie | `cookie=abc123...` | `cookie=<cookie-redacted>` |
+| Refresh token | `refresh_token=abc...` | `refresh_token=<token-redacted>` |
+| Access token | `access_token=abc...` | `access_token=<token-redacted>` |
+| Private key | `private_key=abc...` | `private_key=<key-redacted>` |
 | Master key | `FLUX_MASTER_KEY=abc...` | `FLUX_MASTER_KEY=<master-key-redacted>` |
+
+Token patterns include base64 characters (`+/=.`) so JWTs and Fernet tokens are caught.
 
 ## File Rotation
 
@@ -66,6 +68,8 @@ Log Event
 | Backup count | 5 |
 | Location | `{STORAGE_PATH}/logs/flux.log` |
 | Format | JSON lines (one JSON object per line) |
+
+If the log directory is unwritable, the file handler is skipped with a warning — the app continues with console logging only.
 
 ## JSON Log Schema
 
@@ -78,46 +82,45 @@ Log Event
   "pipeline_id": "abc123...",
   "worker_id": null,
   "event_type": "pipeline_created",
-  "metadata": {
-    "duration_sec": 45.2,
-    "user_ip": "127.0.0.1"
-  },
+  "metadata": {"duration_sec": 45.2},
   "exception": null
 }
 ```
 
-## Common Tasks
+## Usage
 
-### How to use standard logging
 ```python
-from flux.logger import get_logger
+from flux.logger import get_logger, log_activity
 
+# Standard logging
 logger = get_logger(__name__)
-
-# Basic logging (arguments are natively supported and redacted)
 logger.info("Processing pipeline %s", pipeline_id)
-
-# Error logging (tracebacks are automatically redacted!)
-try:
-    1 / 0
-except Exception as e:
-    logger.exception("A critical failure occurred")
-```
-
-### How to log structured activities
-```python
-from flux.logger import log_activity
+logger.warning("Storage at 85%% capacity")
 
 # Structured activity logging
-# Metadata is securely redacted and injected as a JSON object, not a string
 log_activity(
     level="info",
     event_type="render_completed",
     message="Video rendered successfully",
     pipeline_id="abc123",
-    metadata={"duration_sec": 45.2, "status": "success"},
+    metadata={"duration_sec": 45.2},
 )
 ```
+
+## Logging Audit Script
+
+Run the dedicated logging audit to check coverage:
+
+```bash
+python .agents/skills/flux-review/scripts/audit_logging.py
+```
+
+Checks for:
+- `print()` in production code
+- Bare `except:` without logging
+- Files missing `get_logger` import
+- HTTPException paths without preceding logger calls
+- Direct `logging.*` calls (should use logger instance)
 
 ## Log Levels by Environment
 
@@ -131,4 +134,4 @@ log_activity(
 
 ## Conception References
 
-- Monitoring strategy: `documents/conception_archive/13-monitoring-observability-and-alerting.md`
+- Monitoring strategy: `conception_archive/13-monitoring-observability-and-alerting.md`
