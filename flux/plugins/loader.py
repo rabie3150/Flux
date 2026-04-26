@@ -11,7 +11,12 @@ import inspect
 import pkgutil
 from pathlib import Path
 
+import json
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from flux.logger import get_logger
+from flux.models import Plugin
 from flux.plugins.base import ContentPlugin
 
 logger = get_logger(__name__)
@@ -58,6 +63,39 @@ def load_plugins() -> None:
 
         if not found_plugin:
             logger.warning("No ContentPlugin implementation found in flux.plugins.%s", module_name)
+
+
+async def sync_plugins_to_db(db: AsyncSession) -> None:
+    """Synchronize the in-memory PLUGIN_REGISTRY with the database plugins table."""
+    for plugin_id, instance in PLUGIN_REGISTRY.items():
+        result = await db.execute(select(Plugin).where(Plugin.name == plugin_id))
+        existing = result.scalar_one_or_none()
+
+        if existing:
+            # Update existing record
+            existing.display_name = instance.display_name
+            existing.version = instance.version
+            existing.config_schema = json.dumps(instance.get_config_schema())
+            # module_path is tricky to get dynamically here but we can skip it or use __module__
+            existing.module_path = instance.__class__.__module__
+        else:
+            # Create new record
+            # We use the plugin name as the ID if it's short enough, or just let default _new_id handle it.
+            # However, the user is expecting 'quran_shorts' to be the ID in their curl.
+            # But in the DB, 'id' is String(32). 'quran_shorts' fits.
+            new_plugin = Plugin(
+                id=plugin_id,  # Use name as ID for easier manual CURLing/UI usage
+                name=plugin_id,
+                display_name=instance.display_name,
+                version=instance.version,
+                api_version="0.1.0",
+                module_path=instance.__class__.__module__,
+                config_schema=json.dumps(instance.get_config_schema())
+            )
+            db.add(new_plugin)
+    
+    await db.commit()
+    logger.info("Synchronized %d plugins to database", len(PLUGIN_REGISTRY))
 
 
 def get_plugin(plugin_id: str) -> ContentPlugin | None:

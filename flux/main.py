@@ -48,8 +48,12 @@ async def lifespan(app: FastAPI):
 
     try:
         load_plugins()
+        from flux.plugins.loader import sync_plugins_to_db
+        from flux.db import AsyncSessionLocal
+        async with AsyncSessionLocal() as db:
+            await sync_plugins_to_db(db)
     except Exception as e:
-        logger.error("[Flux] Plugin loading failed: %s", e)
+        logger.error("[Flux] Plugin loading or sync failed: %s", e)
         raise
 
     try:
