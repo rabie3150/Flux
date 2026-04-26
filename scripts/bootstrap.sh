@@ -15,7 +15,7 @@ if [ ! -d /storage/emulated/0/Flux ]; then
 fi
 
 # 2. Install system dependencies
-pkg update -y
+pkg upgrade -y
 pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api sqlite
 
 # 3. Create project directory
