@@ -137,16 +137,19 @@ flux/
 
 | Task | Definition of Done |
 |------|-------------------|
-| Project skeleton | `main.py` runs; FastAPI serves `/api/health` |
-| Bootstrap script | One-command install works on clean Termux |
-| SQLite + WAL | `PRAGMA journal_mode=WAL` returns `wal` |
-| Plugin loader | Scans `./plugins/`, loads a dummy plugin, exposes `name` |
-| FFmpeg spike | A 5-second test video renders on the phone in < 30s |
-| Start script | `start.sh` survives `pkill` and auto-restarts |
+| Project skeleton [x] | `main.py` runs; FastAPI serves `/api/health` |
+| Bootstrap script [x] | One-command install works on clean Termux |
+| SQLite + WAL [x] | `PRAGMA journal_mode=WAL` returns `wal` |
+| Plugin loader [x] | Scans `./plugins/`, loads a dummy plugin, exposes `name` |
+| FFmpeg spike [x] | A 5-second test video renders on the phone in < 30s |
+| Start script [x] | `start.sh` survives `pkill` and auto-restarts |
 
 **Validation:** SSH into phone, run bootstrap, hit `/api/health`, verify FFmpeg produces `test_output.mp4`.
 
-**Git commit:** `feat: project skeleton + termux bootstrap + ffmpeg spike`
+**Status:** ✅ Complete — validated on Galaxy S21 Termux.
+
+**Git commits:**
+- `98c238e` feat: phase 0 — project skeleton, health endpoint, bootstrap, skills, audit
 
 ---
 
@@ -155,17 +158,21 @@ flux/
 
 | Task | Definition of Done |
 |------|-------------------|
-| Database schema | All core tables created via Alembic; foreign keys enforced |
-| Pipeline CRUD | Create, read, update, delete, enable/disable pipelines via API |
-| Ingredient service | Insert, list, filter, approve, reject ingredients |
-| APScheduler | Jobs persist in SQLite; survive daemon restart; no duplication |
-| File lock | Two concurrent render attempts → one succeeds, one skips |
-| Minimal admin UI | Plain HTML forms; no Alpine.js yet. Server-rendered tables. |
-| Settings | `.env` loaded; secrets not in git; master key encrypts test creds |
+| Database schema [x] | All core tables created via Alembic; foreign keys enforced |
+| Pipeline CRUD [x] | Create, read, update, delete, enable/disable pipelines via API |
+| Ingredient service [x] | Insert, list, filter, approve, reject ingredients |
+| APScheduler [x] | Jobs persist in SQLite; survive daemon restart; no duplication |
+| File lock [x] | Two concurrent render attempts → one succeeds, one skips |
+| Minimal admin UI [x] | Plain HTML forms; no Alpine.js yet. Server-rendered tables. |
+| Settings [x] | `.env` loaded; secrets not in git; master key encrypts test creds |
 
 **Validation:** Create a Quran pipeline via UI. Upload a test ingredient file manually. Approve it. Verify DB state.
 
-**Git commit:** `feat: core engine — pipeline CRUD, ingredients, scheduler, file locks`
+**Status:** ✅ Complete — 25 tests passing after Hawk Eye review audit.
+
+**Git commits:**
+- `b3f49cd` feat: phase 1 — core engine, database models, API CRUD, scheduler, render lock, logging system, minimal admin UI
+- `e3ad578` fix(review): hawk-eye audit fixes for Phase 0/1
 
 ---
 
@@ -174,16 +181,25 @@ flux/
 
 | Task | Definition of Done |
 |------|-------------------|
-| yt-dlp fetch | Downloads 5 Shorts from whitelisted channel; metadata saved |
-| Pexels fetch | Downloads 10 images with safe keywords; blocklist enforced |
-| Unsplash fallback | Downloads images if Pexels rate-limited |
-| Approval gate | All downloads land in `pending`; bulk approve/reject works |
-| Stock monitoring | Fetch triggers when approved count < min threshold |
-| Telegram notify | Bot sends "5 clips pending approval" with deep link |
+| yt-dlp fetch [x] | Downloads 5 Shorts from whitelisted channel; metadata saved |
+| Pexels fetch [x] | Downloads 10 images with safe keywords; blocklist enforced |
+| Unsplash fallback [x] | Downloads images if Pexels rate-limited |
+| Approval gate [x] | All downloads land in `pending`; bulk approve/reject works |
+| Stock monitoring [x] | Fetch triggers when approved count < min threshold |
+| Telegram notify [ ] | Bot sends "5 clips pending approval" with deep link — **moved to Phase 5** |
 
-**Validation:** Trigger fetch. Receive Telegram notification. Open admin panel. Approve 3 clips. Verify stock count updates.
+**Validation:** Trigger fetch. Open admin panel. Approve 3 clips. Verify stock count updates.
 
-**Git commit:** `feat: quran plugin fetch — yt-dlp, pexels, approval gate, telegram alerts`
+**Status:** ✅ Complete — validated on device. 4 clips + 4 ingredients created successfully from `@Am9li9/shorts`.
+
+**Git commits:**
+- `b881c1a` feat(phase-2): quran plugin fetch — yt-dlp, pexels, unsplash, trigger endpoint
+- `3215b6e` test(phase-2): quran fetch trigger integration tests + bugfix
+- `ea754ca` chore(config): add default quran source channel @Am9li9/shorts
+- `bbdc167` fix(core): auto-sync plugins to database on startup
+- `1b36eed` fix(phase-2): review fixes — deep merge, blocklist enforcement, exception specificity, error isolation
+
+**Note:** Blocklist filtering and 429 rate-limit detection added in review fix commit `1b36eed`.
 
 ---
 
@@ -192,17 +208,19 @@ flux/
 
 | Task | Definition of Done |
 |------|-------------------|
-| Colorkey filter | Black background removed; white text is transparent |
-| Overlay | Quran clip composited over background at 1080×1920 |
-| Image slideshow | N images cycle with timing set; Ken Burns optional |
-| Video background | Background video loops, muted, trimmed to match Quran duration |
-| Thumbnail | Frame extracted at 2s into rendered video |
-| Render queue | Global lock enforced; status tracked in DB; only 1 FFmpeg at a time |
-| Render preview | Admin panel streams rendered MP4 via API endpoint |
+| Colorkey filter [ ] | Black background removed; white text is transparent |
+| Overlay [ ] | Quran clip composited over background at 1080×1920 |
+| Image slideshow [ ] | N images cycle with timing set; Ken Burns optional |
+| Video background [ ] | Background video loops, muted, trimmed to match Quran duration |
+| Thumbnail [ ] | Frame extracted at 2s into rendered video |
+| Render queue [/] | DB schema + lock mechanism exist; render orchestration stub only |
+| Render preview [ ] | Admin panel streams rendered MP4 via API endpoint |
 
 **Validation:** Select 1 approved clip + 3 approved images. Click "Render." Video plays correctly on phone. Duration matches source. Thumbnail is clear.
 
-**Git commit:** `feat: render pipeline — ffmpeg colorkey, overlay, slideshow, thumbnails`
+**Status:** 🔄 **Current focus** — Render method is stub (`return RenderResult(...)`). Full implementation pending.
+
+**Git commit (planned):** `feat: render pipeline — ffmpeg colorkey, overlay, slideshow, thumbnails`
 
 ---
 
@@ -248,12 +266,12 @@ flux/
 
 | Task | Definition of Done |
 |------|-------------------|
-| Alpine.js UI | Replace server-rendered forms with reactive components |
-| Dashboard | Stock bars, queue counts, next post times, storage meter |
-| Real-time | Render progress polls API every 10s; post status updates live |
-| Pipeline config | Form generated from plugin `config_schema` (not raw JSON) |
-| Worker config | Cron builder, caption override, hashtag editor, test button |
-| Mobile layout | Collapses to single column; touch-friendly |
+| Alpine.js UI [ ] | Replace server-rendered forms with reactive components |
+| Dashboard [/] | `/api/pipelines/{id}/stats` endpoint exists; no visual bars yet |
+| Real-time [ ] | Render progress polls API every 10s; post status updates live |
+| Pipeline config [ ] | Form generated from plugin `config_schema` (not raw JSON) |
+| Worker config [ ] | Cron builder, caption override, hashtag editor, test button |
+| Mobile layout [ ] | Collapses to single column; touch-friendly |
 
 **Validation:** Operator performs full setup (add channel, approve clips, add worker, trigger post) entirely from phone browser without SSH.
 
@@ -280,9 +298,26 @@ flux/
 
 ---
 
-## 4. Testing Strategy
+## 4. Actual Progress Tracker
 
-### 4.1 Test Pyramid
+| Phase | Status | Tests | Device Validated | Key Commits |
+|-------|--------|-------|------------------|-------------|
+| 0 Foundation | ✅ Complete | — | ✅ Yes | `98c238e` |
+| 1 Core Engine | ✅ Complete | 25 passing | ✅ Yes | `b3f49cd`, `e3ad578` |
+| 2 Quran Fetch | ✅ Complete | 58 passing (incl. 4 integration) | ✅ Yes | `b881c1a` → `1b36eed` |
+| 3 Render | 🔄 In Progress | — | ❌ No | — |
+| 4 Content ID | ⏳ Not started | — | ❌ No | — |
+| 5 Platform Workers | ⏳ Not started | — | ❌ No | — |
+| 6 Admin Panel | ⏳ Not started | — | ❌ No | — |
+| 7 Hardening | ⏳ Not started | — | ❌ No | — |
+
+> **Current test count:** 58 tests passing (25 unit/integration from Phase 0–1 + 4 Quran fetch integration tests + 29 existing integration tests).
+
+---
+
+## 5. Testing Strategy
+
+### 5.1 Test Pyramid
 
 ```
           /\
@@ -297,7 +332,7 @@ flux/
        Tests/__________________\
 ```
 
-### 4.2 Unit Tests (70% of test suite)
+### 5.2 Unit Tests (70% of test suite)
 Run on laptop. No I/O.
 
 | Module | What to Test |
@@ -309,7 +344,7 @@ Run on laptop. No I/O.
 | `storage.py` | Budget calculation, cleanup suggestions |
 | `notifications.py` | Message formatting, redaction |
 
-### 4.3 Integration Tests (25% of test suite)
+### 5.3 Integration Tests (25% of test suite)
 Run on laptop. SQLite in-memory or temp file. FastAPI `TestClient`.
 
 | Flow | What to Test |
@@ -320,7 +355,7 @@ Run on laptop. SQLite in-memory or temp file. FastAPI `TestClient`.
 | Post dedup | Attempt double-post → 409 or skipped |
 | Settings | Update threshold → fetch triggers or pauses |
 
-### 4.4 Device Tests (5% of test suite — but highest value)
+### 5.4 Device Tests (5% of test suite — but highest value)
 Run **only on Termux.** Marked with `@pytest.mark.device`.
 
 | Test | Why It Must Run on Device |
@@ -332,7 +367,7 @@ Run **only on Termux.** Marked with `@pytest.mark.device`.
 | YouTube upload | Quota consumption, OAuth refresh token on ARM |
 | 48-hour soak | Memory leaks, scheduler drift, Android Doze behavior |
 
-### 4.5 Manual Test Checklist (Per Phase)
+### 5.5 Manual Test Checklist (Per Phase)
 Each phase ships with a `PHASE_N_CHECKLIST.md`:
 
 ```markdown
@@ -351,9 +386,9 @@ Each phase ships with a `PHASE_N_CHECKLIST.md`:
 
 ---
 
-## 5. Git Strategy
+## 6. Git Strategy
 
-### 5.1 Branching Model
+### 6.1 Branching Model
 
 ```
 main
@@ -372,7 +407,7 @@ main
 - **Hotfixes** branch from `main`, merge back immediately.
 - **No long-lived feature branches.** If a phase takes > 2 weeks, split it.
 
-### 5.2 Commit Convention
+### 6.2 Commit Convention
 
 ```
 feat: add ffmpeg colorkey filter for black background removal
@@ -385,7 +420,7 @@ chore: bump yt-dlp to 2024.04.x
 
 **Rule:** Every commit must pass `pytest tests/unit/` on the author's laptop.
 
-### 5.3 Merge Criteria (Definition of Done)
+### 6.3 Merge Criteria (Definition of Done)
 
 Before any phase branch merges to `main`:
 
@@ -398,7 +433,7 @@ Before any phase branch merges to `main`:
 7. [ ] `.env.example` updated if new secrets required.
 8. [ ] Conception docs updated if architecture changed.
 
-### 5.4 Release Tags
+### 6.4 Release Tags
 
 Tag `main` after each phase merge:
 
@@ -412,7 +447,7 @@ v1.0.0          # First autonomous 30-day run complete
 
 ---
 
-## 6. Risk Mitigation per Phase
+## 7. Risk Mitigation per Phase
 
 | Phase | Risk | Mitigation |
 |-------|------|------------|
@@ -431,7 +466,7 @@ v1.0.0          # First autonomous 30-day run complete
 
 ---
 
-## 7. Post-v1.0 Expansion Order
+## 8. Post-v1.0 Expansion Order
 
 After the Quran pipeline runs autonomously for 30 days:
 
@@ -443,7 +478,7 @@ After the Quran pipeline runs autonomously for 30 days:
 
 ---
 
-## 8. Summary: Why This Order?
+## 9. Summary: Why This Order?
 
 | Approach | Why Rejected | Our Approach |
 |----------|-------------|--------------|
