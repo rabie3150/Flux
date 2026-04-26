@@ -19,6 +19,17 @@ from .fetch import fetch_clips
 logger = get_logger(__name__)
 
 
+def _deep_merge(defaults: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
+    """Deep-merge overrides into defaults. Dicts are merged recursively; other types are replaced."""
+    result = dict(defaults)
+    for key, value in overrides.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            result[key] = _deep_merge(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
 class QuranPlugin(ContentPlugin):
     """Quran Shorts content plugin for Flux."""
 
@@ -56,7 +67,7 @@ class QuranPlugin(ContentPlugin):
             - duration_secs: float | None
         """
         # Merge with defaults so missing keys don't crash
-        cfg = {**DEFAULT_CONFIG, **config}
+        cfg = _deep_merge(DEFAULT_CONFIG, config)
 
         max_clips = cfg.get("max_clips_per_fetch", 10)
         max_bg = cfg.get("max_backgrounds_per_fetch", 20)
@@ -64,25 +75,35 @@ class QuranPlugin(ContentPlugin):
         bg_cfg = cfg.get("bg_sources", {})
 
         ingredients: list[dict[str, Any]] = []
+        clips: list[dict[str, Any]] = []
+        backgrounds: list[dict[str, Any]] = []
 
         # 1. Fetch Quran clips
         if channels:
-            clips = await fetch_clips(pipeline_id, channels, max_clips=max_clips)
-            ingredients.extend(clips)
+            try:
+                clips = await fetch_clips(pipeline_id, channels, max_clips=max_clips)
+                ingredients.extend(clips)
+            except Exception as e:
+                logger.error("Clip fetch failed for pipeline %s: %s", pipeline_id, e)
         else:
             logger.warning("No source_channels configured for pipeline %s", pipeline_id)
 
         # 2. Fetch background images
         pexels_kw = bg_cfg.get("pexels_keywords", [])
         unsplash_kw = bg_cfg.get("unsplash_keywords", [])
+        blocklist = bg_cfg.get("blocklist", [])
         if pexels_kw or unsplash_kw:
-            backgrounds = await fetch_backgrounds(
-                pipeline_id,
-                pexels_keywords=pexels_kw,
-                unsplash_keywords=unsplash_kw,
-                max_total=max_bg,
-            )
-            ingredients.extend(backgrounds)
+            try:
+                backgrounds = await fetch_backgrounds(
+                    pipeline_id,
+                    pexels_keywords=pexels_kw,
+                    unsplash_keywords=unsplash_kw,
+                    max_total=max_bg,
+                    blocklist=blocklist,
+                )
+                ingredients.extend(backgrounds)
+            except Exception as e:
+                logger.error("Background fetch failed for pipeline %s: %s", pipeline_id, e)
         else:
             logger.warning("No background keywords configured for pipeline %s", pipeline_id)
 
@@ -90,8 +111,8 @@ class QuranPlugin(ContentPlugin):
             "QuranPlugin.fetch complete for pipeline %s: %d ingredients (%d clips, %d backgrounds)",
             pipeline_id,
             len(ingredients),
-            len(clips) if channels else 0,
-            len(backgrounds) if (pexels_kw or unsplash_kw) else 0,
+            len(clips),
+            len(backgrounds),
         )
         return ingredients
 

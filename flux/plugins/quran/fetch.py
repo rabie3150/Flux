@@ -11,11 +11,15 @@ from pathlib import Path
 from typing import Any
 
 import yt_dlp
+from yt_dlp.utils import DownloadError, ExtractorError
 
 from flux.config import settings
 from flux.logger import get_logger
 
 logger = get_logger(__name__)
+
+# Shorts max duration in seconds (YouTube Shorts are ≤60s, but we allow a buffer)
+MAX_SHORT_DURATION = 120
 
 # yt-dlp download options — lightweight, mobile-friendly
 _YDL_OPTS_BASE: dict[str, Any] = {
@@ -64,7 +68,7 @@ def _extract_shorts_from_channel(channel_url: str, max_clips: int) -> list[dict[
                     continue
                 # Filter: only keep entries that look like Shorts
                 duration = entry.get("duration") or 0
-                if duration > 120:
+                if duration > MAX_SHORT_DURATION:
                     continue  # Probably not a Short
                 videos.append({
                     "id": entry.get("id"),
@@ -72,9 +76,12 @@ def _extract_shorts_from_channel(channel_url: str, max_clips: int) -> list[dict[
                     "uploader": entry.get("uploader", ""),
                     "duration": duration,
                     "webpage_url": entry.get("webpage_url", f"https://youtube.com/shorts/{entry.get('id')}"),
+                    "channel_url": entry.get("channel_url", channel_url),
                 })
-    except Exception as e:
+    except (DownloadError, ExtractorError) as e:
         logger.error("yt-dlp failed to extract channel %s: %s", channel_url, e)
+    except Exception as e:
+        logger.error("Unexpected error extracting channel %s: %s", channel_url, e)
 
     return videos
 
@@ -98,8 +105,11 @@ def _download_video(video_id: str, video_url: str, output_dir: Path) -> Path | N
             ydl.download([video_url])
         logger.info("Downloaded video %s -> %s", video_id, output_path)
         return output_path
+    except (DownloadError, ExtractorError) as e:
+        logger.error("yt-dlp failed to download video %s: %s", video_id, e)
+        return None
     except Exception as e:
-        logger.error("Failed to download video %s: %s", video_id, e)
+        logger.error("Unexpected error downloading video %s: %s", video_id, e)
         return None
 
 

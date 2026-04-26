@@ -21,6 +21,14 @@ _PEXELS_BASE = "https://api.pexels.com/v1"
 _UNSPLASH_BASE = "https://api.unsplash.com"
 
 
+def _matches_blocklist(text: str | None, blocklist: list[str]) -> bool:
+    """Return True if text contains any blocked keyword (case-insensitive)."""
+    if not text:
+        return False
+    lowered = text.lower()
+    return any(kw.lower() in lowered for kw in blocklist)
+
+
 def _bg_dir(subdir: str) -> Path:
     """Return the directory for background media."""
     return Path(settings.storage_path) / "library" / "backgrounds" / subdir
@@ -88,6 +96,7 @@ async def _fetch_pexels(
     keywords: list[str],
     per_keyword: int = 3,
     max_total: int = 20,
+    blocklist: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch images from Pexels."""
     ingredients: list[dict[str, Any]] = []
@@ -96,9 +105,11 @@ async def _fetch_pexels(
         return ingredients
 
     headers = _pexels_headers()
+    blocklist = blocklist or []
+    rate_limited = False
     async with httpx.AsyncClient(timeout=30.0) as client:
         for keyword in keywords:
-            if len(ingredients) >= max_total:
+            if len(ingredients) >= max_total or rate_limited:
                 break
 
             try:
@@ -111,9 +122,13 @@ async def _fetch_pexels(
                         "per_page": per_keyword,
                     },
                 )
+                if resp.status_code == 429:
+                    logger.warning("Pexels rate limited (429). Stopping Pexels fetch.")
+                    rate_limited = True
+                    continue
                 resp.raise_for_status()
                 data = resp.json()
-            except Exception as e:
+            except httpx.HTTPError as e:
                 logger.warning("Pexels search failed for '%s': %s", keyword, e)
                 continue
 
@@ -122,13 +137,26 @@ async def _fetch_pexels(
                     break
 
                 photo_id = photo.get("id")
+                photographer = photo.get("photographer", "")
+                photo_url = photo.get("url", "")
+                alt_text = photo.get("alt", "")
+
+                # Blocklist filter: check photographer, alt text, and URL
+                if blocklist and (
+                    _matches_blocklist(photographer, blocklist)
+                    or _matches_blocklist(alt_text, blocklist)
+                    or _matches_blocklist(photo_url, blocklist)
+                ):
+                    logger.debug("Pexels image %s blocked by blocklist", photo_id)
+                    continue
+
                 existing = _already_downloaded("pexels", photo_id)
                 if existing:
                     logger.debug("Pexels image %s already fetched", photo_id)
                     ingredients.append(_build_bg_meta(
                         existing, "pexels", photo_id,
-                        photo.get("photographer", ""),
-                        photo.get("url", ""),
+                        photographer,
+                        photo_url,
                         [keyword],
                     ))
                     continue
@@ -141,7 +169,7 @@ async def _fetch_pexels(
                 try:
                     img_resp = await client.get(src_url, timeout=30.0)
                     img_resp.raise_for_status()
-                except Exception as e:
+                except httpx.HTTPError as e:
                     logger.warning("Failed to download Pexels image %s: %s", photo_id, e)
                     continue
 
@@ -150,8 +178,8 @@ async def _fetch_pexels(
                 if saved:
                     ingredients.append(_build_bg_meta(
                         saved, "pexels", photo_id,
-                        photo.get("photographer", ""),
-                        photo.get("url", ""),
+                        photographer,
+                        photo_url,
                         [keyword],
                     ))
 
@@ -163,6 +191,7 @@ async def _fetch_unsplash(
     keywords: list[str],
     per_keyword: int = 2,
     max_total: int = 10,
+    blocklist: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch images from Unsplash (fallback)."""
     ingredients: list[dict[str, Any]] = []
@@ -171,9 +200,11 @@ async def _fetch_unsplash(
         return ingredients
 
     headers = _unsplash_headers()
+    blocklist = blocklist or []
+    rate_limited = False
     async with httpx.AsyncClient(timeout=30.0) as client:
         for keyword in keywords:
-            if len(ingredients) >= max_total:
+            if len(ingredients) >= max_total or rate_limited:
                 break
 
             try:
@@ -186,9 +217,13 @@ async def _fetch_unsplash(
                         "per_page": per_keyword,
                     },
                 )
+                if resp.status_code == 429:
+                    logger.warning("Unsplash rate limited (429). Stopping Unsplash fetch.")
+                    rate_limited = True
+                    continue
                 resp.raise_for_status()
                 data = resp.json()
-            except Exception as e:
+            except httpx.HTTPError as e:
                 logger.warning("Unsplash search failed for '%s': %s", keyword, e)
                 continue
 
@@ -197,13 +232,26 @@ async def _fetch_unsplash(
                     break
 
                 img_id = result.get("id")
+                photographer = result.get("user", {}).get("name", "")
+                photo_url = result.get("links", {}).get("html", "")
+                description = result.get("description") or result.get("alt_description", "")
+
+                # Blocklist filter
+                if blocklist and (
+                    _matches_blocklist(photographer, blocklist)
+                    or _matches_blocklist(description, blocklist)
+                    or _matches_blocklist(photo_url, blocklist)
+                ):
+                    logger.debug("Unsplash image %s blocked by blocklist", img_id)
+                    continue
+
                 existing = _already_downloaded("unsplash", img_id)
                 if existing:
                     logger.debug("Unsplash image %s already fetched", img_id)
                     ingredients.append(_build_bg_meta(
                         existing, "unsplash", img_id,
-                        result.get("user", {}).get("name", ""),
-                        result.get("links", {}).get("html", ""),
+                        photographer,
+                        photo_url,
                         [keyword],
                     ))
                     continue
@@ -216,7 +264,7 @@ async def _fetch_unsplash(
                 try:
                     img_resp = await client.get(img_url, timeout=30.0)
                     img_resp.raise_for_status()
-                except Exception as e:
+                except httpx.HTTPError as e:
                     logger.warning("Failed to download Unsplash image %s: %s", img_id, e)
                     continue
 
@@ -225,8 +273,8 @@ async def _fetch_unsplash(
                 if saved:
                     ingredients.append(_build_bg_meta(
                         saved, "unsplash", img_id,
-                        result.get("user", {}).get("name", ""),
-                        result.get("links", {}).get("html", ""),
+                        photographer,
+                        photo_url,
                         [keyword],
                     ))
 
@@ -239,18 +287,19 @@ async def fetch_backgrounds(
     pexels_keywords: list[str],
     unsplash_keywords: list[str],
     max_total: int = 20,
+    blocklist: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch background images from Pexels and Unsplash.
 
     Tries Pexels first; falls back to Unsplash if Pexels is rate-limited
     or returns no results.
     """
-    ingredients = await _fetch_pexels(pexels_keywords, max_total=max_total)
+    ingredients = await _fetch_pexels(pexels_keywords, max_total=max_total, blocklist=blocklist)
 
     # If Pexels gave us less than half, supplement with Unsplash
     if len(ingredients) < max_total // 2:
         remaining = max_total - len(ingredients)
-        unsplash = await _fetch_unsplash(unsplash_keywords, max_total=remaining)
+        unsplash = await _fetch_unsplash(unsplash_keywords, max_total=remaining, blocklist=blocklist)
         ingredients.extend(unsplash)
 
     logger.info("Background fetch complete: %d total images for pipeline %s", len(ingredients), pipeline_id)

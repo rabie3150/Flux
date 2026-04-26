@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flux.core import pipeline as pipeline_service
@@ -73,7 +74,6 @@ async def create_pipeline(
 ) -> dict[str, Any]:
     """Create a new pipeline."""
     # Validate plugin exists
-    from sqlalchemy import select
     plugin_result = await db.execute(select(Plugin).where(Plugin.id == data.plugin_id))
     if plugin_result.scalar_one_or_none() is None:
         logger.warning("Create pipeline failed: plugin not found %s", data.plugin_id)
@@ -268,4 +268,5 @@ async def trigger_pipeline(
         # Phase 5 — stub
         return {"action": "post", "status": "not_implemented", "pipeline_id": pipeline_id}
     else:
+        logger.warning("Unknown trigger action '%s' for pipeline %s", req.action, pipeline_id)
         raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")
