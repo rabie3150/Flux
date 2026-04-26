@@ -9,9 +9,16 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import declarative_base
 
 from flux.config import settings
+from flux.logger import get_logger
+
+logger = get_logger(__name__)
 
 # Convert sqlite:/// URL to aiosqlite equivalent for async support
-_DATABASE_URL = settings.database_url.replace("sqlite:///", "sqlite+aiosqlite:///")
+_db_url = settings.database_url
+if "+aiosqlite" not in _db_url:
+    _DATABASE_URL = _db_url.replace("sqlite:///", "sqlite+aiosqlite:///")
+else:
+    _DATABASE_URL = _db_url
 
 engine = create_async_engine(
     _DATABASE_URL,
@@ -34,7 +41,10 @@ Base = declarative_base()
 def _set_sqlite_pragma(dbapi_conn, connection_record) -> None:
     """Enable WAL mode and foreign keys on every connection."""
     cursor = dbapi_conn.cursor()
-    cursor.execute("PRAGMA journal_mode=WAL")
+    result = cursor.execute("PRAGMA journal_mode=WAL")
+    row = result.fetchone()
+    if row and row[0].lower() != "wal":
+        logger.warning("Failed to enable WAL mode. Current mode: %s", row[0])
     cursor.execute("PRAGMA foreign_keys=ON")
     cursor.close()
 
@@ -46,6 +56,7 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    logger.info("Database tables created/verified")
 
 
 async def get_db() -> AsyncSession:

@@ -214,6 +214,7 @@ class PostRecord(Base):
     error_log: Mapped[Optional[str]] = mapped_column(Text)
     attempt_count: Mapped[int] = mapped_column(Integer, default=0)
     published_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
 
     produced_content: Mapped["ProducedContent"] = relationship(
         "ProducedContent", back_populates="post_records"

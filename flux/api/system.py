@@ -84,7 +84,13 @@ async def list_settings(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     """Return all runtime settings as key-value pairs."""
     result = await db.execute(select(Setting))
     settings_list = result.scalars().all()
-    return {s.key: s.value_json for s in settings_list}
+    parsed = {}
+    for s in settings_list:
+        try:
+            parsed[s.key] = json.loads(s.value_json)
+        except json.JSONDecodeError:
+            parsed[s.key] = s.value_json
+    return parsed
 
 
 @router.put("/settings/{key}")
@@ -93,6 +99,7 @@ async def update_setting(
     update: SettingUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
+    """Create or update a runtime setting."""
     result = await db.execute(select(Setting).where(Setting.key == key))
     setting = result.scalar_one_or_none()
 
@@ -106,7 +113,10 @@ async def update_setting(
 
     await db.commit()
     await db.refresh(setting)
-    return {setting.key: setting.value_json}
+    try:
+        return {setting.key: json.loads(setting.value_json)}
+    except json.JSONDecodeError:
+        return {setting.key: setting.value_json}
 
 
 @router.delete("/settings/{key}")

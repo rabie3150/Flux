@@ -16,7 +16,7 @@ fi
 
 # 2. Install system dependencies
 pkg update -y
-pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api termux-boot
+pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api termux-boot sqlite
 
 # 3. Create project directory
 mkdir -p "$FLUX_DIR"
@@ -59,8 +59,12 @@ chmod +x "$HOME/.termux/boot/start-flux.sh"
 
 # 10. Create .env if missing
 if [ ! -f "$FLUX_DIR/.env" ]; then
-    cp "$FLUX_DIR/.env.example" "$FLUX_DIR/.env"
-    echo "[Flux] Created .env — edit it with your secrets!"
+    if [ -f "$FLUX_DIR/.env.example" ]; then
+        cp "$FLUX_DIR/.env.example" "$FLUX_DIR/.env"
+        echo "[Flux] Created .env — edit it with your secrets!"
+    else
+        echo "[Flux] No .env.example found. Create .env manually."
+    fi
 fi
 
 echo "[Flux] Bootstrap complete."

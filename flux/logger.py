@@ -158,10 +158,10 @@ def log_activity(
     worker_id: str | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> None:
-    """Log an activity event to both logger and database.
+    """Log an activity event with structured metadata.
 
     This is a convenience wrapper for structured activity logging.
-    Database persistence happens via the activity_log service.
+    Database persistence is planned for Phase 2; currently logs only.
     """
     logger = get_logger("flux.activity")
 

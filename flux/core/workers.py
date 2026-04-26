@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flux.core.crypto import encrypt_dict
-from flux.logger import get_logger
+from flux.logger import get_logger, log_activity
 from flux.models import PlatformWorker
 
 logger = get_logger(__name__)
@@ -50,7 +50,14 @@ async def create_worker(
     db.add(worker)
     await db.commit()
     await db.refresh(worker)
-    logger.info("Worker created: %s (%s)", worker.display_name, worker.id)
+    # audit: skip duplication
+    logger.info("Worker created: %s", worker.id)
+    log_activity(
+        level="info",
+        event_type="worker_created",
+        message=f"Worker {display_name} ({platform}) created",
+        worker_id=worker.id
+    )
     return worker
 
 
@@ -84,7 +91,14 @@ async def update_worker(
 
     await db.commit()
     await db.refresh(worker)
+    # audit: skip duplication
     logger.info("Worker updated: %s", worker_id)
+    log_activity(
+        level="info",
+        event_type="worker_updated",
+        message=f"Worker {worker.display_name} updated",
+        worker_id=worker_id
+    )
     return worker
 
 
@@ -95,5 +109,12 @@ async def delete_worker(db: AsyncSession, worker_id: str) -> bool:
         return False
     await db.delete(worker)
     await db.commit()
+    # audit: skip duplication
     logger.info("Worker deleted: %s", worker_id)
+    log_activity(
+        level="info",
+        event_type="worker_deleted",
+        message=f"Worker {worker_id} deleted",
+        worker_id=worker_id
+    )
     return True

@@ -10,6 +10,9 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 
 from flux.config import settings
+from flux.logger import get_logger
+
+logger = get_logger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
 
@@ -29,8 +32,14 @@ def init_scheduler() -> AsyncIOScheduler:
     """
     global _scheduler
 
+    if _scheduler is not None:
+        return _scheduler
+
     # Use sync SQLite URL for APScheduler job store
     jobstore_url = settings.database_url
+    # APScheduler needs a sync driver; strip aiosqlite if present
+    if "+aiosqlite" in jobstore_url:
+        jobstore_url = jobstore_url.replace("+aiosqlite", "")
 
     jobstores = {
         "default": SQLAlchemyJobStore(url=jobstore_url),
@@ -47,6 +56,7 @@ def init_scheduler() -> AsyncIOScheduler:
         job_defaults=job_defaults,
         timezone="UTC",
     )
+    logger.info("Scheduler initialized with SQLite jobstore")
 
     return _scheduler
 
@@ -57,3 +67,4 @@ def shutdown_scheduler(wait: bool = True) -> None:
     if _scheduler is not None:
         _scheduler.shutdown(wait=wait)
         _scheduler = None
+        logger.info("Scheduler shut down")

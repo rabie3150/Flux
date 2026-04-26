@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -58,7 +58,7 @@ async def list_ingredients(
     pipeline_id: str,
     type: str | None = None,
     status: str | None = None,
-    limit: int = 200,
+    limit: int = Query(200, ge=1, le=1000),
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
@@ -82,7 +82,7 @@ async def approve_ingredients(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Approve ingredients by ID."""
-    count = await ingredient_service.approve_ingredients(db, req.ingredient_ids)
+    count = await ingredient_service.approve_ingredients(db, pipeline_id, req.ingredient_ids)
     logger.info("Approved %d ingredients for pipeline %s", count, pipeline_id)
     return {"approved": count, "ingredient_ids": req.ingredient_ids}
 
@@ -94,7 +94,7 @@ async def reject_ingredients(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Reject ingredients by ID."""
-    count = await ingredient_service.reject_ingredients(db, req.ingredient_ids)
+    count = await ingredient_service.reject_ingredients(db, pipeline_id, req.ingredient_ids)
     logger.info("Rejected %d ingredients for pipeline %s", count, pipeline_id)
     return {"rejected": count, "ingredient_ids": req.ingredient_ids}
 
@@ -106,6 +106,6 @@ async def delete_ingredients(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Physically delete ingredients."""
-    count = await ingredient_service.delete_ingredients(db, req.ingredient_ids)
+    count = await ingredient_service.delete_ingredients(db, pipeline_id, req.ingredient_ids)
     logger.info("Deleted %d ingredients for pipeline %s", count, pipeline_id)
     return {"deleted": count, "ingredient_ids": req.ingredient_ids}

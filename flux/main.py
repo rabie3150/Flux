@@ -19,6 +19,7 @@ from flux.db import init_db
 from flux.logger import get_logger, setup_logging
 from flux.plugins import load_plugins
 from flux.scheduler import init_scheduler, shutdown_scheduler
+from pathlib import Path
 
 logger = get_logger(__name__)
 _START_TIME = time.time()
@@ -89,7 +90,9 @@ app.include_router(ingredients_router)
 app.include_router(workers_router)
 
 # Static files for admin panel
-app.mount("/admin", StaticFiles(directory="flux/static/admin", html=True), name="admin")
+_admin_dir = Path(__file__).resolve().parent / "static" / "admin"
+if _admin_dir.exists():
+    app.mount("/admin", StaticFiles(directory=str(_admin_dir), html=True), name="admin")
 
 
 @app.get("/api/health")

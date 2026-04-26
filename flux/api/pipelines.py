@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flux.core import pipeline as pipeline_service
 from flux.db import get_db
 from flux.logger import get_logger
-from flux.models import Pipeline
+from flux.models import Pipeline, Plugin
 
 logger = get_logger(__name__)
 
@@ -72,6 +72,13 @@ async def create_pipeline(
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Create a new pipeline."""
+    # Validate plugin exists
+    from sqlalchemy import select
+    plugin_result = await db.execute(select(Plugin).where(Plugin.id == data.plugin_id))
+    if plugin_result.scalar_one_or_none() is None:
+        logger.warning("Create pipeline failed: plugin not found %s", data.plugin_id)
+        raise HTTPException(status_code=400, detail="Plugin not found")
+
     pipeline = await pipeline_service.create_pipeline(
         db,
         name=data.name,

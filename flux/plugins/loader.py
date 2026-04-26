@@ -44,6 +44,12 @@ def load_plugins() -> None:
                 try:
                     plugin_instance = obj()
                     plugin_id = plugin_instance.name
+                    if plugin_id in PLUGIN_REGISTRY:
+                        logger.error(
+                            "Duplicate plugin ID '%s' from %s. Skipping.",
+                            plugin_id, module_name,
+                        )
+                        continue
                     PLUGIN_REGISTRY[plugin_id] = plugin_instance
                     logger.info("Loaded plugin: %s (v%s)", plugin_instance.display_name, plugin_instance.version)
                     found_plugin = True

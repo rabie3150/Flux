@@ -18,8 +18,8 @@ mkdir -p /storage/emulated/0/Flux/thumbnails
 mkdir -p /storage/emulated/0/Flux/logs
 mkdir -p /storage/emulated/0/Flux/backups
 
-# Enable WAL mode on startup
-sqlite3 "$FLUX_DIR/app.db" "PRAGMA journal_mode=WAL;" 2>/dev/null || true
+# Enable WAL mode on startup (fallback to python if sqlite3 CLI missing)
+python -c "import sqlite3; conn=sqlite3.connect('$FLUX_DIR/app.db'); conn.execute('PRAGMA journal_mode=WAL'); conn.close()" 2>/dev/null || true
 
 # Run with auto-restart on crash
 while true; do

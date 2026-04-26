@@ -24,10 +24,6 @@ def _ensure_lock_dir() -> None:
     _LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
-class LockBusyError(Exception):
-    """Raised when the render lock is already held."""
-
-
 def _acquire_unix(fd: int, timeout: float) -> bool:
     """Unix advisory lock via fcntl with optional timeout."""
     import fcntl
@@ -56,8 +52,8 @@ def _release_unix(fd: int) -> None:
 
     try:
         fcntl.flock(fd, fcntl.LOCK_UN)
-    except OSError:
-        pass
+    except OSError as e:
+        logger.debug("Unix lock release ignored: %s", e)
 
 
 def _acquire_windows(timeout: float) -> tuple[bool, int | None]:
@@ -81,7 +77,7 @@ def _release_windows() -> None:
     try:
         _LOCK_FILE.unlink()
     except FileNotFoundError:
-        pass
+        logger.debug("Windows lock file already deleted")
 
 
 class RenderLock:
@@ -113,8 +109,8 @@ class RenderLock:
             if acquired:
                 self._acquired = True
                 return True
-        except OSError:
-            pass
+        except OSError as e:
+            logger.debug("Unix lock acquire failed: %s", e)
 
         if self._fd is not None:
             os.close(self._fd)
@@ -132,8 +128,8 @@ class RenderLock:
             _release_unix(self._fd)
             try:
                 os.close(self._fd)
-            except OSError:
-                pass
+            except OSError as e:
+                logger.debug("Failed to close unix lock fd: %s", e)
             self._fd = None
         elif os.name == "nt":
             _release_windows()
