@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from flux.core import ingredients as ingredient_service
 from flux.logger import get_logger, log_activity
-from flux.models import Pipeline, PipelineWorker, PlatformWorker
+from flux.models import Pipeline, PipelineWorker, PlatformWorker, Plugin
 from flux.plugins import get_plugin
 
 logger = get_logger(__name__)
@@ -193,9 +193,17 @@ async def trigger_fetch(db: AsyncSession, pipeline_id: str) -> dict[str, Any]:
     if pipeline is None:
         raise ValueError("Pipeline not found")
 
-    plugin = get_plugin(pipeline.plugin_id)
+    # plugin_id on Pipeline is the DB record UUID; we need the plugin name
+    plugin_record = await db.execute(
+        select(Plugin).where(Plugin.id == pipeline.plugin_id)
+    )
+    plugin_row = plugin_record.scalar_one_or_none()
+    if plugin_row is None:
+        raise ValueError(f"Plugin record '{pipeline.plugin_id}' not found")
+
+    plugin = get_plugin(plugin_row.name)
     if plugin is None:
-        raise ValueError(f"Plugin '{pipeline.plugin_id}' not loaded")
+        raise ValueError(f"Plugin '{plugin_row.name}' not loaded")
 
     config = json.loads(pipeline.config_json) if pipeline.config_json else {}
     ingredients = await plugin.fetch(pipeline_id, config)
