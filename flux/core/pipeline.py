@@ -8,7 +8,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from flux.logger import get_logger
+from flux.logger import get_logger, log_activity
 from flux.models import Pipeline, PipelineWorker, PlatformWorker
 
 logger = get_logger(__name__)
@@ -44,6 +44,12 @@ async def create_pipeline(
     await db.commit()
     await db.refresh(pipeline)
     logger.info("Pipeline created: %s (%s)", pipeline.name, pipeline.id)
+    log_activity(
+        level="info",
+        event_type="pipeline_created",
+        message=f"Pipeline {name} created",
+        pipeline_id=pipeline.id
+    )
     return pipeline
 
 
@@ -68,7 +74,14 @@ async def update_pipeline(
 
     await db.commit()
     await db.refresh(pipeline)
-    logger.info("Pipeline updated: %s", pipeline.id)
+    # audit: skip duplication
+    logger.info("Pipeline updated: %s", pipeline_id)
+    log_activity(
+        level="info",
+        event_type="pipeline_updated",
+        message=f"Pipeline {pipeline.name} updated",
+        pipeline_id=pipeline_id
+    )
     return pipeline
 
 
@@ -79,7 +92,14 @@ async def delete_pipeline(db: AsyncSession, pipeline_id: str) -> bool:
         return False
     await db.delete(pipeline)
     await db.commit()
+    # audit: skip duplication
     logger.info("Pipeline deleted: %s", pipeline_id)
+    log_activity(
+        level="info",
+        event_type="pipeline_deleted",
+        message=f"Pipeline {pipeline_id} deleted",
+        pipeline_id=pipeline_id
+    )
     return True
 
 
@@ -110,7 +130,15 @@ async def attach_worker(
     junction = PipelineWorker(pipeline_id=pipeline_id, worker_id=worker_id)
     db.add(junction)
     await db.commit()
+    # audit: skip duplication
     logger.info("Worker attached to pipeline: %s -> %s", worker_id, pipeline_id)
+    log_activity(
+        level="info",
+        event_type="worker_attached",
+        message=f"Worker {worker_id} attached to pipeline {pipeline_id}",
+        pipeline_id=pipeline_id,
+        worker_id=worker_id
+    )
     return True
 
 
@@ -129,7 +157,15 @@ async def detach_worker(
         return False
     await db.delete(junction)
     await db.commit()
+    # audit: skip duplication
     logger.info("Worker detached from pipeline: %s -> %s", worker_id, pipeline_id)
+    log_activity(
+        level="info",
+        event_type="worker_detached",
+        message=f"Worker {worker_id} detached from pipeline {pipeline_id}",
+        pipeline_id=pipeline_id,
+        worker_id=worker_id
+    )
     return True
 
 

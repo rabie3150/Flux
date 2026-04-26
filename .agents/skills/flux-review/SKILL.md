@@ -11,20 +11,57 @@ description: >
 
 ## Automated Audit (Run First)
 
-Before any manual review, run the audit script:
+Before any manual review, run the audit runner:
 
 ```bash
-python .agents/skills/flux-review/scripts/audit.py
+python .agents/skills/flux-review/scripts/runner.py
 ```
 
-This scans for:
-- Files >800 lines
-- Functions/classes >100 lines
-- Temporary code markers (TODO, FIXME, HACK, TEMP, XXX)
-- Naive datetime usage (`datetime.now()` without timezone)
-- Hardcoded colors, paths, secrets
-- Inline styles in HTML
-- `print()` in production code
+### CLI Options
+
+| Flag | Description |
+|------|-------------|
+| `--audit NAME` | Run only named audit(s). Repeatable. |
+| `--severity WARNING` | Minimum severity to display (INFO / WARNING / CRITICAL). |
+| `--json` | Machine-readable JSON output for CI. |
+| `--fix-suggestions` | Include fix suggestions in output. |
+
+### Available Audits
+
+| Audit | File | What It Checks |
+|-------|------|----------------|
+| `file_structure` | `audits/file_structure.py` | Files >800 lines, functions/classes >100 lines |
+| `temp_markers` | `audits/temp_markers.py` | TODO, FIXME, HACK, TEMP, XXX, BROKEN, DEBUGME |
+| `datetime_safety` | `audits/datetime_safety.py` | Naive datetime.now(), .utcnow(), .today(), time.time() |
+| `hardcoded_values` | `audits/hardcoded_values.py` | Hardcoded colors, paths, secrets |
+| `code_hygiene` | `audits/code_hygiene.py` | print() in production code, inline styles in HTML |
+| `error_handling` | `audits/error_handling.py` | Bare except, except/pass, HTTPException without logging, missing backoff |
+| `logging_hygiene` | `audits/logging_hygiene.py` | Direct logging calls, missing get_logger, logger.py self-check |
+| `ai_slop` | `audits/ai_slop.py` | Generic names, over-commenting, empty bodies, lazy docstrings |
+| `consistency` | `audits/consistency.py` | Mixed naming, import styles, string quotes, async patterns |
+| `dead_code` | `audits/dead_code.py` | Unused imports, unreachable code, never-read variables |
+| `duplication` | `audits/duplication.py` | Near-duplicate code blocks (>5 lines) within a file |
+| `api_contract` | `audits/api_contract.py` | Response models, status codes, missing docstrings |
+
+### Adding New Audits
+
+Create a new `.py` file in `scripts/audits/`. Extend `BaseAudit`:
+
+```python
+from runner import BaseAudit, Finding
+
+class MyNewAudit(BaseAudit):
+    name = "my_new_audit"
+    description = "What this audit checks"
+    file_extensions = {".py"}  # optional filter
+
+    def check(self, filepath, content, lines):
+        findings = []
+        # ... your checks ...
+        return findings
+```
+
+It will be auto-discovered by the runner — no registration needed.
 
 **If audit reports CRITICAL findings, review stops until fixed.**
 

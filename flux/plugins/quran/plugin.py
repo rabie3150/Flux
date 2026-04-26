@@ -4,7 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from flux.logger import get_logger
 from flux.plugins.base import ContentPlugin, RenderResult
+
+logger = get_logger(__name__)
 
 
 class QuranPlugin(ContentPlugin):
