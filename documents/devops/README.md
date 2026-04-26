@@ -26,7 +26,7 @@ One-command setup for a clean Termux installation:
 
 ```bash
 pkg update && pkg upgrade -y
-pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api termux-boot
+pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api
 termux-setup-storage
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt

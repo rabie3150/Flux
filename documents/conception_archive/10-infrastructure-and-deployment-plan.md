@@ -24,7 +24,7 @@ pkg update && pkg upgrade -y
 pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng
 
 # 5. Optional but recommended
-pkg install -y termux-api termux-boot
+pkg install -y termux-api
 
 # 6. Bootstrap Flux
 curl -fsSL https://raw.githubusercontent.com/YOUR_REPO/flux/main/scripts/bootstrap.sh | bash
@@ -39,7 +39,7 @@ set -e
 REPO_URL="https://github.com/YOUR_REPO/flux.git"
 FLUX_DIR="$HOME/flux"
 
-pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api termux-boot
+pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api
 
 mkdir -p "$FLUX_DIR"
 cd "$FLUX_DIR"

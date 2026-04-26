@@ -1,10 +1,10 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # Flux bootstrap script for Termux
-# Usage: curl -fsSL https://raw.githubusercontent.com/YOURNAME/flux/main/scripts/bootstrap.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/rabie3150/Flux/main/scripts/bootstrap.sh | bash
 
 set -e
 
-REPO_URL="https://github.com/YOURNAME/flux.git"
+REPO_URL="https://github.com/rabie3150/Flux.git"
 FLUX_DIR="$HOME/flux"
 
 echo "[Flux] Bootstrapping..."
@@ -16,7 +16,7 @@ fi
 
 # 2. Install system dependencies
 pkg update -y
-pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api termux-boot sqlite
+pkg install -y python ffmpeg git openssh yt-dlp clang make libjpeg-turbo libpng termux-api sqlite
 
 # 3. Create project directory
 mkdir -p "$FLUX_DIR"
