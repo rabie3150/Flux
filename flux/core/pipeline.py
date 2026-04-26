@@ -8,8 +8,10 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from flux.core import ingredients as ingredient_service
 from flux.logger import get_logger, log_activity
 from flux.models import Pipeline, PipelineWorker, PlatformWorker
+from flux.plugins import get_plugin
 
 logger = get_logger(__name__)
 
@@ -179,3 +181,44 @@ async def get_pipeline_workers(
         .where(PipelineWorker.pipeline_id == pipeline_id)
     )
     return list(result.scalars().all())
+
+
+async def trigger_fetch(db: AsyncSession, pipeline_id: str) -> dict[str, Any]:
+    """Trigger a fetch job for a pipeline.
+
+    Loads the pipeline's plugin, calls plugin.fetch(), and inserts
+    returned ingredients into the database with status='pending'.
+    """
+    pipeline = await get_pipeline(db, pipeline_id)
+    if pipeline is None:
+        raise ValueError("Pipeline not found")
+
+    plugin = get_plugin(pipeline.plugin_id)
+    if plugin is None:
+        raise ValueError(f"Plugin '{pipeline.plugin_id}' not loaded")
+
+    config = json.loads(pipeline.config_json) if pipeline.config_json else {}
+    ingredients = await plugin.fetch(pipeline_id, config)
+
+    created = 0
+    for item in ingredients:
+        await ingredient_service.create_ingredient(
+            db,
+            pipeline_id=pipeline_id,
+            type=item["type"],
+            file_path=item.get("file_path"),
+            source_url=item.get("source_url"),
+            metadata=item.get("metadata"),
+            file_size_bytes=item.get("file_size_bytes"),
+            duration_secs=item.get("duration_secs"),
+        )
+        created += 1
+
+    logger.info("Fetch triggered for pipeline %s: %d ingredients created", pipeline_id, created)
+    log_activity(
+        level="info",
+        event_type="fetch_triggered",
+        message=f"Fetched {created} ingredients for pipeline {pipeline_id}",
+        pipeline_id=pipeline_id,
+    )
+    return {"created": created, "pipeline_id": pipeline_id}

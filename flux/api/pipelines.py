@@ -236,3 +236,36 @@ async def list_pipeline_workers(
         }
         for w in workers
     ]
+
+
+class TriggerRequest(BaseModel):
+    action: str  # "fetch", "render", "post"
+
+
+@router.post("/{pipeline_id}/trigger")
+async def trigger_pipeline(
+    pipeline_id: str,
+    req: TriggerRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Manually trigger a pipeline action (fetch, render, post)."""
+    pipeline = await pipeline_service.get_pipeline(db, pipeline_id)
+    if pipeline is None:
+        logger.warning("Pipeline not found for trigger: %s", pipeline_id)
+        raise HTTPException(status_code=404, detail="Pipeline not found")
+
+    if req.action == "fetch":
+        try:
+            result = await pipeline_service.trigger_fetch(db, pipeline_id)
+            return result
+        except ValueError as e:
+            logger.warning("Fetch trigger failed for pipeline %s: %s", pipeline_id, e)
+            raise HTTPException(status_code=400, detail=str(e))
+    elif req.action == "render":
+        # Phase 3 — stub
+        return {"action": "render", "status": "not_implemented", "pipeline_id": pipeline_id}
+    elif req.action == "post":
+        # Phase 5 — stub
+        return {"action": "post", "status": "not_implemented", "pipeline_id": pipeline_id}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown action: {req.action}")

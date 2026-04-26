@@ -21,6 +21,9 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
+dependencies = [
+    "yt-dlp>=2026.3.17",
+]
 
 [project.optional-dependencies]
 dev = [
