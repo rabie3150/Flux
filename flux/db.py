@@ -41,8 +41,9 @@ Base = declarative_base()
 def _set_sqlite_pragma(dbapi_conn, connection_record) -> None:
     """Enable WAL mode and foreign keys on every connection."""
     cursor = dbapi_conn.cursor()
-    result = cursor.execute("PRAGMA journal_mode=WAL")
-    row = result.fetchone()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA journal_mode")
+    row = cursor.fetchone()
     if row and row[0].lower() != "wal":
         logger.warning("Failed to enable WAL mode. Current mode: %s", row[0])
     cursor.execute("PRAGMA foreign_keys=ON")
