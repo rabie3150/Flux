@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 DEFAULT_CONFIG: dict = {
-    "source_channels": [],
+    "source_channels": [
+        # Black-ground Quran chroma — ideal for colorkey removal
+        "https://www.youtube.com/@Am9li9/shorts",
+    ],
     "bg_sources": {
-        "pexels_keywords": ["nature", "clouds", "ocean", "mountains", "sky"],
-        "unsplash_keywords": ["abstract", "light", "space", "gradient"],
-        "blocklist": ["people", "face", "portrait", "woman", "man", "nude"],
+        "pexels_keywords": ["nature", "clouds", "ocean", "mountains", "sky", "islamic architecture"],
+        "unsplash_keywords": ["abstract", "light", "space", "gradient", "galaxy"],
+        "blocklist": ["people", "face", "portrait", "woman", "man", "nude", "bikini"],
     },
     "max_clips_per_fetch": 10,
     "max_backgrounds_per_fetch": 20,
