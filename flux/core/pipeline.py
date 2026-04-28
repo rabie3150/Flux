@@ -234,32 +234,24 @@ async def trigger_fetch(db: AsyncSession, pipeline_id: str) -> dict[str, Any]:
     return {"created": created, "pipeline_id": pipeline_id}
 
 
-async def trigger_render(
-    db: AsyncSession, pipeline_id: str, ingredient_ids: list[str]
-) -> dict[str, Any]:
-    """Trigger a render job for a pipeline.
-
-    Acquires the global render lock, creates a produced_content record,
-    calls plugin.render(), and updates the record with the result.
-    """
-    pipeline = await get_pipeline(db, pipeline_id)
-    if pipeline is None:
-        raise ValueError("Pipeline not found")
-
+async def _resolve_plugin_for_pipeline(db: AsyncSession, pipeline: Pipeline) -> Any:
+    """Look up the loaded plugin instance for a pipeline."""
     plugin_record = await db.execute(
         select(Plugin).where(Plugin.id == pipeline.plugin_id)
     )
     plugin_row = plugin_record.scalar_one_or_none()
     if plugin_row is None:
         raise ValueError(f"Plugin record '{pipeline.plugin_id}' not found")
-
     plugin = get_plugin(plugin_row.name)
     if plugin is None:
         raise ValueError(f"Plugin '{plugin_row.name}' not loaded")
+    return plugin
 
-    config = json.loads(pipeline.config_json) if pipeline.config_json else {}
 
-    # Resolve ingredient file paths so the plugin doesn't need its own DB session
+async def _resolve_render_ingredients(
+    db: AsyncSession, pipeline_id: str, ingredient_ids: list[str]
+) -> dict[str, Any]:
+    """Resolve ingredient IDs to file paths for rendering."""
     from flux.core.ingredients import get_ingredient
 
     clip_path: str | None = None
@@ -271,13 +263,36 @@ async def trigger_render(
                 clip_path = ing.file_path
             elif ing.type in ("bg_image", "bg_video") and ing.file_path:
                 bg_paths.append(ing.file_path)
+    return {"clip_path": clip_path, "bg_paths": bg_paths}
 
-    config["_render_ingredients"] = {
-        "clip_path": clip_path,
-        "bg_paths": bg_paths,
-    }
 
-    async with render_lock_ctx(timeout=0.0) as acquired:
+async def trigger_render(
+    db: AsyncSession,
+    pipeline_id: str,
+    ingredient_ids: list[str],
+    lock_timeout: float = 30.0,
+) -> dict[str, Any]:
+    """Trigger a render job for a pipeline.
+
+    Acquires the global render lock, creates a produced_content record,
+    calls plugin.render(), and updates the record with the result.
+
+    Args:
+        lock_timeout: Seconds to wait for the render lock. Manual API calls
+            should use a generous timeout (default 30s). Scheduled jobs may
+            use 0 to skip immediately if another render is active.
+    """
+    pipeline = await get_pipeline(db, pipeline_id)
+    if pipeline is None:
+        raise ValueError("Pipeline not found")
+
+    plugin = await _resolve_plugin_for_pipeline(db, pipeline)
+    config = json.loads(pipeline.config_json) if pipeline.config_json else {}
+    config["_render_ingredients"] = await _resolve_render_ingredients(
+        db, pipeline_id, ingredient_ids
+    )
+
+    async with render_lock_ctx(timeout=lock_timeout) as acquired:
         if not acquired:
             logger.warning("Render lock busy; skipping render for pipeline %s", pipeline_id)
             return {
@@ -286,7 +301,6 @@ async def trigger_render(
                 "reason": "render_lock_busy",
             }
 
-        # Create produced_content record
         content = await production_service.create_produced_content(
             db, pipeline_id, ingredient_ids, render_method="video_compose"
         )
@@ -327,9 +341,7 @@ async def trigger_render(
 
         logger.info(
             "Render succeeded for pipeline %s: content=%s file=%s",
-            pipeline_id,
-            content.id,
-            result.file_path,
+            pipeline_id, content.id, result.file_path,
         )
         log_activity(
             level="info",

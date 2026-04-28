@@ -281,7 +281,10 @@ async def trigger_pipeline(
             ingredient_ids = [clip.id] + [i.id for i in bgs[:3]]
 
         try:
-            result = await pipeline_service.trigger_render(db, pipeline_id, ingredient_ids)
+            # Manual API calls wait up to 30s for the render lock
+            result = await pipeline_service.trigger_render(
+                db, pipeline_id, ingredient_ids, lock_timeout=30.0
+            )
             return result
         except ValueError as e:
             logger.warning("Render trigger failed for pipeline %s: %s", pipeline_id, e)
