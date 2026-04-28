@@ -22,9 +22,9 @@ The backend is the FastAPI application that serves as the core engine for Flux. 
 | APScheduler setup | ✅ Implemented | 1 |
 | Logging system | ✅ Implemented | 1 |
 | Static files (admin panel) | ✅ Implemented | 1 (minimal HTML) |
-| Plugin loader + registry | 🚧 Pending | 2 |
-| Scheduler jobs (fetch, render, publish) | 🚧 Pending | 2–5 |
-| Platform worker implementations | 🚧 Pending | 5 |
+| Plugin loader + registry | ✅ Implemented | 2 |
+| Scheduler jobs (fetch, render, publish) | 🏗️ In Progress | 2–5 |
+| Platform worker implementations | 🏗️ In Progress | 5 |
 
 ## Project Structure
 

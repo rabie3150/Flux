@@ -240,6 +240,7 @@ async def list_pipeline_workers(
 
 class TriggerRequest(BaseModel):
     action: str  # "fetch", "render", "post"
+    ingredient_ids: list[str] | None = None
 
 
 @router.post("/{pipeline_id}/trigger")
@@ -262,8 +263,29 @@ async def trigger_pipeline(
             logger.warning("Fetch trigger failed for pipeline %s: %s", pipeline_id, e)
             raise HTTPException(status_code=400, detail=str(e))
     elif req.action == "render":
-        # Phase 3 — stub
-        return {"action": "render", "status": "not_implemented", "pipeline_id": pipeline_id}
+        ingredient_ids = req.ingredient_ids
+        if not ingredient_ids:
+            # Auto-select first approved clip + backgrounds
+            from flux.core.ingredients import list_ingredients
+
+            approved = await list_ingredients(
+                db, pipeline_id, status_filter="approved", limit=10
+            )
+            clip = next((i for i in approved if i.type == "quran_clip"), None)
+            bgs = [i for i in approved if i.type in ("bg_image", "bg_video")]
+            if not clip:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No approved quran_clip found. Approve ingredients first.",
+                )
+            ingredient_ids = [clip.id] + [i.id for i in bgs[:3]]
+
+        try:
+            result = await pipeline_service.trigger_render(db, pipeline_id, ingredient_ids)
+            return result
+        except ValueError as e:
+            logger.warning("Render trigger failed for pipeline %s: %s", pipeline_id, e)
+            raise HTTPException(status_code=400, detail=str(e))
     elif req.action == "post":
         # Phase 5 — stub
         return {"action": "post", "status": "not_implemented", "pipeline_id": pipeline_id}

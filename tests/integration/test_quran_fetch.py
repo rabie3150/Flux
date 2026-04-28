@@ -113,16 +113,14 @@ async def test_trigger_unknown_action_returns_400(
 
 
 @pytest.mark.anyio
-async def test_trigger_render_stub(
+async def test_trigger_render_no_ingredients(
     client: AsyncClient,
     quran_pipeline: Pipeline,
 ):
-    """POST trigger with action=render returns not_implemented stub."""
+    """POST trigger with action=render returns 400 when no approved ingredients exist."""
     response = await client.post(
         f"/api/pipelines/{quran_pipeline.id}/trigger",
         json={"action": "render"},
     )
-    assert response.status_code == 200
-    data = response.json()
-    assert data["action"] == "render"
-    assert data["status"] == "not_implemented"
+    assert response.status_code == 400
+    assert "No approved quran_clip" in response.json()["detail"]

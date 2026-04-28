@@ -1,5 +1,12 @@
 # Frontend Documentation
 
-> **Status:** Docs will be written after the admin panel is implemented.
->
-> See `conception_archive/05-low-fidelity-wireframes.md` and `conception_archive/03-information-architecture-and-sitemap.md` for design reference.
+## Overview
+The Flux frontend is a minimalist web-based admin panel designed for mobile and desktop access via SSH port-forwarding.
+
+## Documentation Index
+- [UI Components](file:///D:/Projects/Flux/documents/frontend/ui-components.md) — Technical details of the admin panel implementation.
+
+## Tech Stack
+- **Framework:** Alpine.js (reactive state management)
+- **Styling:** Vanilla CSS
+- **Delivery:** Static files served via FastAPI

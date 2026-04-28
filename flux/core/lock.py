@@ -132,6 +132,13 @@ class RenderLock:
                 logger.debug("Failed to close unix lock fd: %s", e)
             self._fd = None
         elif os.name == "nt":
+            # Close the Windows fd before unlinking
+            if self._fd is not None:
+                try:
+                    os.close(self._fd)
+                except OSError as e:
+                    logger.debug("Failed to close windows lock fd: %s", e)
+                self._fd = None
             _release_windows()
 
         self._acquired = False

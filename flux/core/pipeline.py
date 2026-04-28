@@ -9,6 +9,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flux.core import ingredients as ingredient_service
+from flux.core import production as production_service
+from flux.core.lock import render_lock_ctx
 from flux.logger import get_logger, log_activity
 from flux.models import Pipeline, PipelineWorker, PlatformWorker, Plugin
 from flux.plugins import get_plugin
@@ -230,3 +232,115 @@ async def trigger_fetch(db: AsyncSession, pipeline_id: str) -> dict[str, Any]:
         pipeline_id=pipeline_id,
     )
     return {"created": created, "pipeline_id": pipeline_id}
+
+
+async def trigger_render(
+    db: AsyncSession, pipeline_id: str, ingredient_ids: list[str]
+) -> dict[str, Any]:
+    """Trigger a render job for a pipeline.
+
+    Acquires the global render lock, creates a produced_content record,
+    calls plugin.render(), and updates the record with the result.
+    """
+    pipeline = await get_pipeline(db, pipeline_id)
+    if pipeline is None:
+        raise ValueError("Pipeline not found")
+
+    plugin_record = await db.execute(
+        select(Plugin).where(Plugin.id == pipeline.plugin_id)
+    )
+    plugin_row = plugin_record.scalar_one_or_none()
+    if plugin_row is None:
+        raise ValueError(f"Plugin record '{pipeline.plugin_id}' not found")
+
+    plugin = get_plugin(plugin_row.name)
+    if plugin is None:
+        raise ValueError(f"Plugin '{plugin_row.name}' not loaded")
+
+    config = json.loads(pipeline.config_json) if pipeline.config_json else {}
+
+    # Resolve ingredient file paths so the plugin doesn't need its own DB session
+    from flux.core.ingredients import get_ingredient
+
+    clip_path: str | None = None
+    bg_paths: list[str] = []
+    for ing_id in ingredient_ids:
+        ing = await get_ingredient(db, ing_id)
+        if ing and ing.status == "approved":
+            if ing.type == "quran_clip" and ing.file_path:
+                clip_path = ing.file_path
+            elif ing.type in ("bg_image", "bg_video") and ing.file_path:
+                bg_paths.append(ing.file_path)
+
+    config["_render_ingredients"] = {
+        "clip_path": clip_path,
+        "bg_paths": bg_paths,
+    }
+
+    async with render_lock_ctx(timeout=0.0) as acquired:
+        if not acquired:
+            logger.warning("Render lock busy; skipping render for pipeline %s", pipeline_id)
+            return {
+                "pipeline_id": pipeline_id,
+                "status": "skipped",
+                "reason": "render_lock_busy",
+            }
+
+        # Create produced_content record
+        content = await production_service.create_produced_content(
+            db, pipeline_id, ingredient_ids, render_method="video_compose"
+        )
+
+        try:
+            result = await plugin.render(pipeline_id, ingredient_ids, config)
+        except Exception as e:
+            logger.exception("Render failed for pipeline %s", pipeline_id)
+            await production_service.update_render_failed(db, content.id, str(e))
+            return {
+                "pipeline_id": pipeline_id,
+                "content_id": content.id,
+                "status": "failed",
+                "error": str(e),
+            }
+
+        if result.file_path is None:
+            error = result.metadata.get("error", "unknown")
+            logger.error("Render returned no file for pipeline %s: %s", pipeline_id, error)
+            await production_service.update_render_failed(
+                db, content.id, f"Render returned no file: {error}"
+            )
+            return {
+                "pipeline_id": pipeline_id,
+                "content_id": content.id,
+                "status": "failed",
+                "error": error,
+            }
+
+        await production_service.update_render_success(
+            db,
+            content.id,
+            file_path=result.file_path,
+            thumbnail_path=result.thumbnail_path,
+            metadata=result.metadata,
+            caption=result.caption,
+        )
+
+        logger.info(
+            "Render succeeded for pipeline %s: content=%s file=%s",
+            pipeline_id,
+            content.id,
+            result.file_path,
+        )
+        log_activity(
+            level="info",
+            event_type="render_triggered",
+            message=f"Rendered content {content.id} for pipeline {pipeline_id}",
+            pipeline_id=pipeline_id,
+        )
+        return {
+            "pipeline_id": pipeline_id,
+            "content_id": content.id,
+            "status": "rendered",
+            "file_path": result.file_path,
+            "thumbnail_path": result.thumbnail_path,
+        }

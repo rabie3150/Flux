@@ -15,6 +15,7 @@ from flux.plugins.base import ContentPlugin, RenderResult
 from .backgrounds import fetch_backgrounds
 from .config import CONFIG_SCHEMA, DEFAULT_CONFIG
 from .fetch import fetch_clips
+from .render import render_from_ingredients
 
 logger = get_logger(__name__)
 
@@ -122,12 +123,71 @@ class QuranPlugin(ContentPlugin):
         ingredient_ids: list[str],
         config: dict[str, Any],
     ) -> RenderResult:
-        """Compose final video from approved ingredients. (Phase 3)"""
-        logger.info("QuranPlugin.render called for pipeline %s (Phase 3 stub)", pipeline_id)
+        """Compose final video from approved ingredients."""
+        logger.info(
+            "QuranPlugin.render called for pipeline %s with %d ingredients",
+            pipeline_id,
+            len(ingredient_ids),
+        )
+
+        # Resolve ingredient file paths from config (injected by core engine)
+        # or fall back to DB query for direct calls.
+        render_ingredients = config.get("_render_ingredients", {})
+        clip_path: str | None = render_ingredients.get("clip_path")
+        bg_paths: list[str] = render_ingredients.get("bg_paths", [])
+
+        if not clip_path or not bg_paths:
+            from flux.db import AsyncSessionLocal
+            from flux.models import Ingredient
+            from sqlalchemy import select
+
+            async with AsyncSessionLocal() as db:
+                result = await db.execute(
+                    select(Ingredient).where(
+                        Ingredient.id.in_(ingredient_ids),
+                        Ingredient.pipeline_id == pipeline_id,
+                        Ingredient.status == "approved",
+                    )
+                )
+                ingredients = result.scalars().all()
+
+                for ing in ingredients:
+                    if ing.type == "quran_clip" and ing.file_path:
+                        clip_path = ing.file_path
+                    elif ing.type in ("bg_image", "bg_video") and ing.file_path:
+                        bg_paths.append(ing.file_path)
+
+        if not clip_path:
+            logger.error("No approved quran_clip found among ingredients for pipeline %s", pipeline_id)
+            return RenderResult(
+                file_path=None,
+                caption="",
+                metadata={"error": "no_clip", "pipeline_id": pipeline_id},
+            )
+
+        if not bg_paths:
+            logger.error("No approved backgrounds found among ingredients for pipeline %s", pipeline_id)
+            return RenderResult(
+                file_path=None,
+                caption="",
+                metadata={"error": "no_background", "pipeline_id": pipeline_id},
+            )
+
+        try:
+            result = await render_from_ingredients(clip_path, bg_paths, config)
+        except Exception as e:
+            logger.error("Render failed for pipeline %s: %s", pipeline_id, e)
+            return RenderResult(
+                file_path=None,
+                caption="",
+                metadata={"error": str(e), "pipeline_id": pipeline_id},
+            )
+
         return RenderResult(
-            file_path=None,
+            file_path=result["file_path"],
+            thumbnail_path=result["thumbnail_path"],
             caption="",
-            metadata={"pipeline_id": pipeline_id, "ingredient_ids": ingredient_ids},
+            metadata=result["metadata"],
         )
 
     async def identify_content(
