@@ -16,7 +16,7 @@ from flux.logger import get_logger
 
 logger = get_logger(__name__)
 
-_LOCK_FILE: Path = Path(settings.storage_path) / ".flux-render.lock"
+_LOCK_FILE: Path = Path(settings.base_path) / ".flux-render.lock"
 
 
 def _ensure_lock_dir() -> None:
@@ -31,17 +31,21 @@ def _acquire_unix(fd: int, timeout: float) -> bool:
     if timeout <= 0:
         try:
             fcntl.flock(fd, fcntl.LOCK_NB | fcntl.LOCK_EX)
+            logger.debug("Unix lock acquired (non-blocking)")
             return True
-        except (OSError, BlockingIOError, IOError):
+        except (OSError, BlockingIOError, IOError) as e:
+            logger.debug("Unix lock acquire failed (non-blocking): %s", e)
             return False
 
     deadline = time.monotonic() + timeout
     while True:
         try:
             fcntl.flock(fd, fcntl.LOCK_NB | fcntl.LOCK_EX)
+            logger.debug("Unix lock acquired (blocking)")
             return True
-        except (OSError, BlockingIOError, IOError):
+        except (OSError, BlockingIOError, IOError) as e:
             if time.monotonic() >= deadline:
+                logger.debug("Unix lock acquire timed out: %s", e)
                 return False
             time.sleep(0.1)
 

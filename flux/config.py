@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     )
     storage_budget_gb: int = Field(default=5, alias="STORAGE_BUDGET_GB")
 
+    base_path: Path = Field(
+        default=Path("~/flux"),
+        alias="BASE_PATH",
+    )
+
     # Notifications
     telegram_bot_token: str = Field(default="", alias="TELEGRAM_BOT_TOKEN")
     telegram_chat_id: str = Field(default="", alias="TELEGRAM_CHAT_ID")
@@ -52,7 +57,7 @@ class Settings(BaseSettings):
         alias="YOUTUBE_CLIENT_SECRETS_PATH",
     )
 
-    @field_validator("storage_path", "youtube_client_secrets_path", mode="before")
+    @field_validator("storage_path", "youtube_client_secrets_path", "base_path", mode="before")
     @classmethod
     def expand_user_path(cls, v: str) -> Path:
         return Path(v).expanduser()
