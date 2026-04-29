@@ -22,7 +22,7 @@ else:
 
 engine = create_async_engine(
     _DATABASE_URL,
-    echo=settings.flux_env == "development",
+    echo=False,
     future=True,
 )
 
@@ -52,7 +52,6 @@ def _set_sqlite_pragma(dbapi_conn, connection_record) -> None:
 
 async def init_db() -> None:
     """Create all tables. Call once at application startup."""
-    # Import models so they register with Base.metadata
     import flux.models  # noqa: F401
 
     async with engine.begin() as conn:
