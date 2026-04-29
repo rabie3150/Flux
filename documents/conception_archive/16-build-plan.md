@@ -15,7 +15,7 @@ Build the **highest-risk components first.** If they fail, we fail fast and chea
 | 1 | FFmpeg render pipeline (colorkey, overlay, encode) | ARM performance, thermal throttling, filtergraph complexity |
 | 2 | yt-dlp fetch + YouTube Data API upload | yt-dlp breaks when YouTube changes; API quota is finite |
 | 3 | Instagrapi session persistence | Unofficial; sessions expire; ban risk |
-| 4 | Whisper.cpp on Termux | Compilation issues, model size, accuracy on phone audio |
+| 4 | Gemini AI fallback for Content ID | API reliability, prompt engineering, cost/quota management |
 | 5 | Plugin loader / dynamic imports | Python import edge cases, namespace collisions |
 | 6 | Admin UI (Alpine.js) | Lowest risk; pure frontend logic |
 
@@ -224,9 +224,10 @@ flux/
 - `76b4de0` feat(phase-3): render pipeline — ffmpeg colorkey, overlay, thumbnail, render lock
 - `9e9cf43` fix(render): add lock_timeout param, extract helpers, refactor trigger_render
 - `0090dcd` feat: implement configuration management and cross-platform file locking for render coordination
-- `5940d76` feat(phase-3): complete render pipeline and enhance admin UI (card-based library, streaming API)
-- `565ce99` feat(render): implement robust background animations (Ken Burns panning/zooming)
-- `48ae3d4` fix(render): resolve Windows event loop hangs and libx264 scaling constraints
+- `5940d76` feat(phase-3): complete render pipeline and enhance admin UI
+- `565ce99` feat(render): implement robust background animations (Ken Burns)
+- `48ae3d4` fix(render): fix static slideshow and improve filtergraph robustness
+- `f1ba755` docs(phase-3): update build plan with final Phase 3 commits and status
 
 ---
 
@@ -236,13 +237,13 @@ flux/
 | Task | Definition of Done |
 |------|-------------------|
 | Metadata regex | 90%+ of test clips correctly extract surah:ayah from title |
-| Whisper fallback | Transcribes audio; fuzzy-matches against local Quran text |
+| Gemini AI fallback | Sends video/URL to Gemini API; rotates keys if failed; IDs verse |
 | Manual assignment | Admin can assign verse via UI; video moves to `ready` |
 | quran.com API | Fetches Arabic + translation + tafseer; cached in SQLite |
 | Caption template | Jinja2 renders verse_ref + arabic + translation + hashtags |
 | Platform overrides | YouTube gets full caption; X gets truncated version |
 
-**Validation:** Render 5 videos. 4 identified via metadata. 1 triggers Whisper. 1 fails both → admin assigns manually. All captions render correctly per platform.
+**Validation:** Render 5 videos. 4 identified via metadata. 1 triggers Gemini AI. 1 fails both → admin assigns manually. All captions render correctly per platform.
 
 **Git commit:** `feat: verse identification, translation fetch, caption engine`
 
@@ -311,7 +312,7 @@ flux/
 | 0 Foundation | ✅ Complete | — | ✅ Yes | `98c238e` |
 | 1 Core Engine | ✅ Complete | 25 passing | ✅ Yes | `b3f49cd`, `e3ad578` |
 | 2 Quran Fetch | ✅ Complete | 58 passing (incl. 4 integration) | ✅ Yes | `b881c1a` → `1b36eed` |
-| 3 Render | ✅ Complete | 8 integration passing | ✅ Yes | `76b4de0` → `48ae3d4` |
+| 3 Render | ✅ Complete | 8 integration passing | ✅ Yes | `76b4de0` → `f1ba755` |
 | 4 Content ID | ⏳ Not started | — | ❌ No | — |
 | 5 Platform Workers | ⏳ Not started | — | ❌ No | — |
 | 6 Admin Panel | ⏳ Not started | — | ❌ No | — |
@@ -368,7 +369,7 @@ Run **only on Termux.** Marked with `@pytest.mark.device`.
 |------|--------------------------|
 | FFmpeg render | ARM encode speed, thermal behavior, filtergraph correctness |
 | yt-dlp fetch | YouTube may block non-residential IPs; ARM binary compatibility |
-| Whisper.cpp | Model load time, transcription accuracy on phone speaker |
+| Gemini AI ID | API connectivity, key rotation logic on device |
 | Instagrapi login | Session file paths, Android file permissions |
 | YouTube upload | Quota consumption, OAuth refresh token on ARM |
 | 48-hour soak | Memory leaks, scheduler drift, Android Doze behavior |
@@ -464,7 +465,7 @@ v1.0.0          # First autonomous 30-day run complete
 | 2 | Pexels returns inappropriate images | Strict blocklist + manual approval gate. Never auto-approve. |
 | 3 | Phone overheats during render | Thermal sensor check before render; `ultrafast` preset fallback. |
 | 3 | FFmpeg filtergraph produces garbled output | Render a test video after every filter change. Visual inspection. |
-| 4 | Whisper.cpp accuracy too low | Keep metadata regex as primary; Whisper is fallback only. |
+| 4 | Gemini AI identification failure | Keep metadata regex as primary; Gemini is fallback only. |
 | 5 | YouTube API quota exhausted | Track units per upload; alert at 70%; hard stop at 95%. |
 | 5 | Instagram account banned | Use burner account for testing; warm up with manual posts first. |
 | 6 | Alpine.js too complex for phone browser | Keep UI server-rendered where possible; Alpine only for reactive widgets. |

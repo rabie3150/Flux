@@ -128,40 +128,31 @@ _SURAHS: list[dict[str, Any]] = [
     {"n": 106, "en": "Quraysh", "ar": "قريش", "tr": ["quraysh", "quraish", "quraish"]},
     {"n": 107, "en": "Al-Ma'un", "ar": "الماعون", "tr": ["almaun", "al-ma'un", "maun", "the small kindnesses"]},
     {"n": 108, "en": "Al-Kawthar", "ar": "الكوثر", "tr": ["alkawthar", "al-kawthar", "kawthar", "the abundance"]},
-    {"n": 109, "en": "Al-Kafirun", "ar": "الكافرون", "tr": ["alkafirun", "al-kafirun", "kafirun", "the disbelievers"]},
+    {"n": 109, "en": "Al-Kafirun", "ar": "الكافيرون", "tr": ["alkafirun", "al-kafirun", "kafirun", "the disbelievers"]},
     {"n": 110, "en": "An-Nasr", "ar": "النصر", "tr": ["annasr", "an-nasr", "nasr", "the divine support"]},
     {"n": 111, "en": "Al-Masad", "ar": "المسد", "tr": ["almasad", "al-masad", "masad", "the palm fibre"]},
-    {"n": 112, "en": "Al-Ikhlas", "ar": "الإخلاص", "tr": ["alikhlas", "al-ikhlas", "ikhlas", "the sincerity"]},
+    {"n": 112, "en": "Al-Ikhlas", "ar": "الإخلاص", "tr": ["alikhlas", "al-ikhlas", "ikhlas", "the sincerity", "قل هو الله احد"]},
     {"n": 113, "en": "Al-Falaq", "ar": "الفلق", "tr": ["alfalaq", "al-falaq", "falaq", "the daybreak"]},
     {"n": 114, "en": "An-Nas", "ar": "الناس", "tr": ["annas", "an-nas", "nas", "mankind"]},
 ]
 # fmt: on
 
+# Common phrases/names for specific verses
+_COMMON_VERSES: list[dict[str, Any]] = [
+    {"surah": 2, "ayah": 255, "names": ["ayatul kursi", "آية الكرسي"]},
+    {"surah": 2, "ayah": 285, "names": ["amane rasul", "آمن الرسول"]},
+    {"surah": 18, "ayah": 1, "names": ["first 10 verses of surah kahf"]},
+]
 
 # Build lookup indexes
-_SURAH_BY_EN: dict[str, int] = {}
-_SURAH_BY_AR: dict[str, int] = {}
-_SURAH_BY_TR: dict[str, int] = {}
-_SURAH_NAMES: dict[int, dict[str, Any]] = {}
-
+...
 for s in _SURAHS:
     num = s["n"]
     _SURAH_NAMES[num] = s
     _SURAH_BY_EN[s["en"].lower()] = num
-    _SURAH_BY_AR[s["ar"]] = num
+    _SURAH_BY_AR[_normalize_arabic(s["ar"])] = num
     for t in s["tr"]:
         _SURAH_BY_TR[t.lower()] = num
-
-
-def _normalize_arabic(text: str) -> str:
-    """Remove tashkeel and normalize Arabic chars."""
-    # Remove common diacritics
-    tashkeel = "\u064b\u064c\u064d\u064e\u064f\u0650\u0651\u0652\u0653\u0670"
-    for ch in tashkeel:
-        text = text.replace(ch, "")
-    # Normalize alef variants
-    text = text.replace("\u0623", "\u0627").replace("\u0625", "\u0627").replace("\u0622", "\u0627")
-    return text
 
 
 # ---------------------------------------------------------------------------
@@ -170,25 +161,24 @@ def _normalize_arabic(text: str) -> str:
 
 # Numeric pattern: "2:255", "Surah 2 Verse 255", "Chapter 2 : 255", etc.
 _NUMERIC_RE = re.compile(
-    r"(?:surah|chapter|sura|سورة)?\s*"  # optional surah prefix
+    r"(?:surah|chapter|sura|سورة|سورة\s+)?\s*"  # optional surah prefix
     r"(\d{1,3})\s*[:\-\.،]\s*(\d{1,3})",  # surah:ayah
     re.IGNORECASE | re.UNICODE,
 )
 
 # Named pattern: "Al-Baqarah 255", "Surah Al-Baqarah Ayah 255", etc.
-# We build this dynamically from surah names since the list is long.
 _EN_NAME_PATTERN = "|".join(
     re.escape(name) for name in sorted(_SURAH_BY_EN.keys(), key=len, reverse=True)
 )
 _AR_NAME_PATTERN = "|".join(
-    re.escape(name) for name in sorted(_SURAH_BY_AR.keys(), key=len, reverse=True)
+    re.escape(_normalize_arabic(name)) for name in sorted(_SURAH_BY_AR.keys(), key=len, reverse=True)
 )
 
 _NAMED_RE = re.compile(
     r"(?:surah|chapter|sura|سورة)?\s*"
     r"(?:(" + _EN_NAME_PATTERN + r")|(" + _AR_NAME_PATTERN + r"))"
     r"\s*(?:verse|ayah|آية)?\s*[:\-\.\s]*"
-    r"(\d{1,3})",
+    r"(\d{1,3})?",  # Ayah is now optional
     re.IGNORECASE | re.UNICODE,
 )
 
@@ -204,35 +194,32 @@ def _resolve_surah_number(name: str | None) -> int | None:
     if not name:
         return None
     key = name.strip().lower()
+    # Arabic match (normalized)
+    norm_key = _normalize_arabic(key)
+    
     # Direct English match
     if key in _SURAH_BY_EN:
         return _SURAH_BY_EN[key]
+    # Arabic match
+    if norm_key in _SURAH_BY_AR:
+        return _SURAH_BY_AR[norm_key]
     # Transliterated match
     if key in _SURAH_BY_TR:
         return _SURAH_BY_TR[key]
-    # Arabic match (normalized)
-    normalized = _normalize_arabic(key)
-    if normalized in _SURAH_BY_AR:
-        return _SURAH_BY_AR[normalized]
+    if norm_key in _SURAH_BY_TR:
+        return _SURAH_BY_TR[norm_key]
+        
     return None
 
 
-def _validate_verse(surah: int, ayah: int) -> bool:
-    """Validate that surah:ayah exists.
-
-    Uses known verse counts per surah (simplified full list).
-    """
+def _validate_verse(surah: int, ayah: int | None) -> bool:
+    """Validate that surah:ayah exists."""
     # Verse counts for all 114 surahs
-    verse_counts = [
-        7, 286, 200, 176, 120, 165, 206, 75, 129, 109, 123, 111, 43, 52, 99,
-        128, 111, 110, 98, 135, 112, 78, 118, 64, 77, 227, 93, 88, 69, 60, 34,
-        30, 73, 54, 45, 83, 182, 88, 75, 85, 54, 53, 89, 59, 37, 35, 38, 29,
-        18, 45, 60, 49, 62, 55, 78, 96, 29, 22, 24, 13, 14, 11, 11, 18, 12,
-        12, 30, 52, 52, 44, 28, 28, 20, 56, 40, 31, 50, 40, 46, 42, 29, 19,
-        36, 25, 22, 17, 19, 26, 30, 20, 15, 21, 11, 8, 8, 19, 5, 8, 8, 11,
-        11, 8, 3, 9, 5, 4, 7, 3, 6, 3, 5, 4, 5, 6,
+...
     ]
     if 1 <= surah <= 114:
+        if ayah is None:
+            return True
         return 1 <= ayah <= verse_counts[surah - 1]
     return False
 
@@ -247,37 +234,41 @@ def identify_from_title(title: str) -> dict[str, Any] | None:
         return None
 
     text = title.strip()
+    norm_text = _normalize_arabic(text.lower())
 
-    # Try named pattern first (higher confidence)
-    for match in _NAMED_RE.finditer(text):
+    # 1. Try common phrases first
+    for cv in _COMMON_VERSES:
+        for name in cv["names"]:
+            if name in norm_text:
+                return {
+                    "surah": cv["surah"],
+                    "ayah": cv["ayah"],
+                    "verse_key": f"{cv['surah']}:{cv['ayah']}",
+                    "method": "common_phrase",
+                    "matched_text": name,
+                }
+
+    # 2. Try named pattern (Surah Name + optional Ayah)
+    for match in _NAMED_RE.finditer(norm_text):
         en_name = match.group(1)
         ar_name = match.group(2)
         ayah_str = match.group(3)
         surah = _resolve_surah_number(en_name or ar_name)
-        if surah and ayah_str:
-            ayah = int(ayah_str)
+        if surah:
+            ayah = int(ayah_str) if ayah_str else None
             if _validate_verse(surah, ayah):
                 return {
                     "surah": surah,
                     "ayah": ayah,
-                    "verse_key": f"{surah}:{ayah}",
+                    "verse_key": f"{surah}:{ayah}" if ayah else f"{surah}:?",
                     "method": "named_pattern",
                     "matched_text": match.group(0),
+                    "needs_ai": ayah is None,
                 }
 
-    # Try numeric pattern with optional surah prefix
+    # 3. Try numeric pattern (2:255)
     for match in _NUMERIC_RE.finditer(text):
-        surah = int(match.group(1))
-        ayah = int(match.group(2))
-        if _validate_verse(surah, ayah):
-            return {
-                "surah": surah,
-                "ayah": ayah,
-                "verse_key": f"{surah}:{ayah}",
-                "method": "numeric_pattern",
-                "matched_text": match.group(0),
-            }
-
+...
     # Try standalone numeric (word boundary)
     for match in _STANDALONE_RE.finditer(text):
         surah = int(match.group(1))

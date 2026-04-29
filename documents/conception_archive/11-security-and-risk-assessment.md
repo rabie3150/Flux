@@ -140,7 +140,7 @@ This prevents a misconfigured or banned account from hammering the platform and 
 | Tier | Method | Confidence | Action |
 |------|--------|------------|--------|
 | 1 | yt-dlp metadata regex | ~90% | Proceed if match |
-| 2 | Whisper fuzzy match | ~70% | Proceed if confidence > 85% |
+| 2 | Gemini AI fallback | 85% | Proceed if match |
 | 3 | Manual admin assignment | 100% | Required if tiers 1–2 fail |
 
 **Rule:** Content with an unresolved `review_flag` in plugin metadata (e.g., `verse_unknown`) **cannot** enter the ready queue. The core engine checks the plugin metadata field; the specific reason is plugin-defined. It is a hard blocker.

@@ -1,6 +1,10 @@
 """Flux application configuration."""
 
+from __future__ import annotations
+
+import json
 from pathlib import Path
+from typing import Any
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -52,10 +56,33 @@ class Settings(BaseSettings):
     # APIs
     pexels_api_key: str = Field(default="", alias="PEXELS_API_KEY")
     unsplash_access_key: str = Field(default="", alias="UNSPLASH_ACCESS_KEY")
+    gemini_api_keys: Any = Field(default_factory=list, alias="GEMINI_API_KEYS")
     youtube_client_secrets_path: Path = Field(
         default=Path("~/flux/secrets/youtube_client_secret.json"),
         alias="YOUTUBE_CLIENT_SECRETS_PATH",
     )
+
+    @field_validator("gemini_api_keys", mode="before")
+    @classmethod
+    def parse_json_list(cls, v: Any) -> list[str]:
+        if isinstance(v, str) and v.strip():
+            # If it looks like a JSON list, try to parse it
+            if v.strip().startswith("["):
+                try:
+                    parsed = json.loads(v)
+                    if isinstance(parsed, list):
+                        return [str(item) for item in parsed]
+                except json.JSONDecodeError:
+                    # Incomplete or invalid JSON (e.g. multi-line .env issue)
+                    pass
+            
+            # Fallback to comma-separated
+            return [s.strip() for s in v.split(",") if s.strip() and s.strip() not in ("[", "]")]
+        
+        if isinstance(v, list):
+            return [str(item) for item in v]
+            
+        return []
 
     @field_validator("storage_path", "youtube_client_secrets_path", "base_path", mode="before")
     @classmethod

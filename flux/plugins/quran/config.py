@@ -21,6 +21,21 @@ DEFAULT_CONFIG: dict = {
     },
     "ken_burns": True,
     "image_duration": 5.0,
+    "hashtags": ["Quran", "Islam", "Reminder", "Faith", "Peace"],
+    "caption_templates": {
+        "default": (
+            "📖 {{ surah_name }} ({{ verse_ref }})\n\n"
+            "{{ arabic_text }}\n\n"
+            "{{ translation }}\n\n"
+            "{{ hashtags }}"
+        ),
+        "youtube": (
+            "📖 Surah {{ surah_name }} | Verse {{ verse_ref }}\n\n"
+            "Recitation of the Holy Quran.\n\n"
+            "{{ hashtags }}"
+        ),
+        "x": "📖 {{ surah_name }} ({{ verse_ref }})\n\n{{ translation }}\n\n#Quran #Islam",
+    },
 }
 
 CONFIG_SCHEMA: dict = {
@@ -69,6 +84,21 @@ CONFIG_SCHEMA: dict = {
             "type": "number",
             "default": 5.0,
             "description": "Duration to show each background image in seconds",
+        },
+        "hashtags": {
+            "type": "array",
+            "items": {"type": "string"},
+            "default": ["Quran", "Islam", "Reminder", "Faith", "Peace"],
+        },
+        "caption_templates": {
+            "type": "object",
+            "properties": {
+                "default": {"type": "string"},
+                "youtube": {"type": "string"},
+                "instagram": {"type": "string"},
+                "telegram": {"type": "string"},
+                "x": {"type": "string"},
+            },
         },
         "canvas": {
             "type": "object",

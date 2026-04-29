@@ -82,6 +82,54 @@ async def update_render_success(
     return content
 
 
+async def update_identifying(
+    db: AsyncSession,
+    content_id: str,
+) -> ProducedContent | None:
+    """Transition content to 'identifying' state."""
+    content = await get_produced_content(db, content_id)
+    if content is None:
+        return None
+
+    content.status = "identifying"
+    await db.commit()
+    await db.refresh(content)
+    logger.info("ProducedContent identifying: %s", content_id)
+    return content
+
+
+async def update_identification_result(
+    db: AsyncSession,
+    content_id: str,
+    success: bool,
+    metadata: dict[str, Any] | None = None,
+    error_message: str | None = None,
+) -> ProducedContent | None:
+    """Update content after identification attempt."""
+    content = await get_produced_content(db, content_id)
+    if content is None:
+        return None
+
+    if success:
+        content.status = "ready"
+        content.ready_at = _now()
+    else:
+        content.status = "verse_unknown"
+        if error_message:
+            content.render_log = f"ID Error: {error_message}"
+
+    if metadata:
+        # Merge with existing metadata
+        existing_meta = json.loads(content.content_meta_json or "{}")
+        existing_meta.update(metadata)
+        content.content_meta_json = json.dumps(existing_meta)
+
+    await db.commit()
+    await db.refresh(content)
+    logger.info("ProducedContent ID result: %s (success=%s)", content_id, success)
+    return content
+
+
 async def update_render_failed(
     db: AsyncSession,
     content_id: str,

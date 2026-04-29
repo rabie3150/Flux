@@ -1,9 +1,4 @@
-"""Quran Shorts plugin — Phase 2: Fetch implementation.
-
-Downloads Quran Shorts from YouTube channels and background images
-from Pexels/Unsplash. All ingredients enter the pipeline as pending
-for operator approval.
-"""
+"""Quran Shorts plugin implementation."""
 
 from __future__ import annotations
 
@@ -15,7 +10,10 @@ from flux.plugins.base import ContentPlugin, RenderResult
 from .backgrounds import fetch_backgrounds
 from .config import CONFIG_SCHEMA, DEFAULT_CONFIG
 from .fetch import fetch_clips
+from .identify import identify_from_metadata
 from .render import render_from_ingredients
+from .ai import GeminiAIClient
+from .api import VerseService
 
 logger = get_logger(__name__)
 
@@ -53,43 +51,21 @@ class QuranPlugin(ContentPlugin):
     async def fetch(
         self, pipeline_id: str, config: dict[str, Any]
     ) -> list[dict[str, Any]]:
-        """Fetch new Quran clips and background images.
-
-        Downloads Shorts from configured YouTube channels and background
-        images from Pexels/Unsplash. Returns ingredient metadata dicts
-        for the core engine to persist.
-
-        Each dict contains:
-            - type: "quran_clip" | "bg_image"
-            - file_path: absolute path to downloaded file
-            - source_url: original URL
-            - metadata: dict with source-specific info
-            - file_size_bytes: int | None
-            - duration_secs: float | None
-        """
-        # Merge with defaults so missing keys don't crash
+        """Fetch new Quran clips and background images."""
         cfg = _deep_merge(DEFAULT_CONFIG, config)
-
         max_clips = cfg.get("max_clips_per_fetch", 10)
         max_bg = cfg.get("max_backgrounds_per_fetch", 20)
         channels = cfg.get("source_channels", [])
         bg_cfg = cfg.get("bg_sources", {})
 
         ingredients: list[dict[str, Any]] = []
-        clips: list[dict[str, Any]] = []
-        backgrounds: list[dict[str, Any]] = []
-
-        # 1. Fetch Quran clips
         if channels:
             try:
                 clips = await fetch_clips(pipeline_id, channels, max_clips=max_clips)
                 ingredients.extend(clips)
             except Exception as e:
                 logger.error("Clip fetch failed for pipeline %s: %s", pipeline_id, e)
-        else:
-            logger.warning("No source_channels configured for pipeline %s", pipeline_id)
 
-        # 2. Fetch background images
         pexels_kw = bg_cfg.get("pexels_keywords", [])
         unsplash_kw = bg_cfg.get("unsplash_keywords", [])
         blocklist = bg_cfg.get("blocklist", [])
@@ -105,16 +81,7 @@ class QuranPlugin(ContentPlugin):
                 ingredients.extend(backgrounds)
             except Exception as e:
                 logger.error("Background fetch failed for pipeline %s: %s", pipeline_id, e)
-        else:
-            logger.warning("No background keywords configured for pipeline %s", pipeline_id)
 
-        logger.info(
-            "QuranPlugin.fetch complete for pipeline %s: %d ingredients (%d clips, %d backgrounds)",
-            pipeline_id,
-            len(ingredients),
-            len(clips),
-            len(backgrounds),
-        )
         return ingredients
 
     async def render(
@@ -124,94 +91,25 @@ class QuranPlugin(ContentPlugin):
         config: dict[str, Any],
     ) -> RenderResult:
         """Compose final video from approved ingredients."""
-        logger.info(
-            "QuranPlugin.render called for pipeline %s with %d ingredients",
-            pipeline_id,
-            len(ingredient_ids),
-        )
-
-        # Resolve ingredient file paths from config (injected by core engine)
-        # or fall back to DB query for direct calls.
         render_ingredients = config.get("_render_ingredients", {})
         clip_path: str | None = render_ingredients.get("clip_path")
-        bg_paths_raw = render_ingredients.get("bg_paths")
-        
-        if isinstance(bg_paths_raw, str):
-            bg_paths = [bg_paths_raw]
-        elif isinstance(bg_paths_raw, list):
-            bg_paths = bg_paths_raw
-        else:
-            bg_paths = []
-
-        # If we have any single-character strings in bg_paths, it means a string was unpacked as a list somewhere upstream.
-        # Let's clean it up to be safe.
-        bg_paths = [p for p in bg_paths if len(p) > 1]
+        bg_paths = render_ingredients.get("bg_paths") or []
 
         if not clip_path or not bg_paths:
-            from flux.db import AsyncSessionLocal
-            from flux.models import Ingredient
-            from sqlalchemy import select
+            return RenderResult(file_path=None, caption="", metadata={"error": "missing_ingredients"})
 
-            async with AsyncSessionLocal() as db:
-                result = await db.execute(
-                    select(Ingredient).where(
-                        Ingredient.id.in_(ingredient_ids),
-                        Ingredient.pipeline_id == pipeline_id,
-                        Ingredient.status == "approved",
-                    )
-                )
-                ingredients = result.scalars().all()
-
-                # Rebuild from scratch if incomplete to avoid accidental string unpacking issues
-                bg_paths = []
-                clip_path = None
-                
-                for ing in ingredients:
-                    if ing.type == "quran_clip" and not clip_path:
-                        clip_path = ing.file_path
-                    elif ing.type in ("bg_image", "bg_video") and ing.file_path:
-                        if ing.file_path not in bg_paths:
-                            bg_paths.append(ing.file_path)
-
-        if not clip_path:
-            logger.error("No approved quran_clip found among ingredients for pipeline %s", pipeline_id)
-            return RenderResult(
-                file_path=None,
-                caption="",
-                metadata={"error": "no_clip", "pipeline_id": pipeline_id},
-            )
-
-        if not bg_paths:
-            logger.error("No approved backgrounds found among ingredients for pipeline %s", pipeline_id)
-            return RenderResult(
-                file_path=None,
-                caption="",
-                metadata={"error": "no_background", "pipeline_id": pipeline_id},
-            )
-
-        # Merge with defaults
         cfg = _deep_merge(DEFAULT_CONFIG, config)
-        ken_burns = cfg.get("ken_burns", True)
-        image_duration = cfg.get("image_duration", 5.0)
-
         try:
-            result = await render_from_ingredients(
-                clip_path, bg_paths, cfg
+            result = await render_from_ingredients(clip_path, bg_paths, cfg)
+            return RenderResult(
+                file_path=result["file_path"],
+                thumbnail_path=result["thumbnail_path"],
+                caption="",
+                metadata=result["metadata"],
             )
         except Exception as e:
-            logger.error("Render failed for pipeline %s: %s", pipeline_id, e)
-            return RenderResult(
-                file_path=None,
-                caption="",
-                metadata={"error": str(e), "pipeline_id": pipeline_id},
-            )
-
-        return RenderResult(
-            file_path=result["file_path"],
-            thumbnail_path=result["thumbnail_path"],
-            caption="",
-            metadata=result["metadata"],
-        )
+            logger.error("Render failed: %s", e)
+            return RenderResult(file_path=None, caption="", metadata={"error": str(e)})
 
     async def identify_content(
         self,
@@ -220,7 +118,45 @@ class QuranPlugin(ContentPlugin):
         config: dict[str, Any],
     ) -> dict[str, Any] | None:
         """Identify verse reference from rendered content. (Phase 4)"""
-        logger.info("QuranPlugin.identify_content called (Phase 4 stub)")
+        logger.info("QuranPlugin.identify_content called for %s", produced_content_id)
+
+        from flux.db import AsyncSessionLocal
+        from flux.models import ProducedContent, Ingredient
+        from sqlalchemy import select
+        import json
+
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(select(ProducedContent).where(ProducedContent.id == produced_content_id))
+            content = res.scalar_one_or_none()
+            if not content: return None
+            
+            ing_ids = json.loads(content.ingredient_ids_json)
+            res = await db.execute(select(Ingredient).where(Ingredient.id.in_(ing_ids), Ingredient.type == "quran_clip"))
+            clip = res.scalar_one_or_none()
+            if not clip: return None
+            
+            clip_meta = json.loads(clip.metadata_json or "{}")
+            source_url = clip.source_url
+
+        id_result = identify_from_metadata(clip_meta)
+        
+        if not id_result or id_result.get("needs_ai"):
+            from flux.config import settings
+            if settings.gemini_api_keys:
+                logger.info("Regex ID incomplete, falling back to Gemini AI...")
+                ai_client = GeminiAIClient(settings.gemini_api_keys)
+                ai_result = await ai_client.identify_verse(video_url=source_url)
+                if ai_result:
+                    if id_result: id_result.update(ai_result)
+                    else: id_result = ai_result
+
+        if id_result:
+            from .identify import _SURAH_NAMES
+            surah_num = id_result.get("surah")
+            if surah_num in _SURAH_NAMES:
+                id_result["surah_name"] = _SURAH_NAMES[surah_num]["en"]
+            return id_result
+
         return None
 
     async def build_caption(
@@ -231,9 +167,55 @@ class QuranPlugin(ContentPlugin):
         worker_config: dict[str, Any],
     ) -> str:
         """Generate caption for a specific platform worker. (Phase 4)"""
-        logger.info("QuranPlugin.build_caption called (Phase 4 stub)")
-        return ""
+        logger.info("QuranPlugin.build_caption called for %s", produced_content_id)
+
+        from flux.db import AsyncSessionLocal
+        from flux.models import ProducedContent
+        from sqlalchemy import select
+        import json
+
+        async with AsyncSessionLocal() as db:
+            res = await db.execute(select(ProducedContent).where(ProducedContent.id == produced_content_id))
+            content = res.scalar_one_or_none()
+            if not content or not content.content_meta_json: return ""
+            
+            meta = json.loads(content.content_meta_json)
+            surah = meta.get("surah")
+            ayah = meta.get("ayah")
+            surah_name = meta.get("surah_name", f"Surah {surah}")
+
+        if not surah or not ayah: return ""
+
+        verse_service = VerseService()
+        verse_data = await verse_service.get_verse(surah, ayah)
+        if not verse_data: return ""
+
+        cfg = _deep_merge(DEFAULT_CONFIG, config)
+        platform = worker_config.get("platform", "default")
+        templates = cfg.get("caption_templates", {})
+        template_str = templates.get(platform, templates.get("default", ""))
+        
+        if not template_str: return ""
+
+        import random
+        pool = cfg.get("hashtags", [])
+        count = min(len(pool), random.randint(3, 5))
+        hashtags = " ".join([f"#{h}" for h in random.sample(pool, count)]) if pool else ""
+
+        from jinja2 import Template
+        template = Template(template_str)
+        caption = template.render(
+            surah_name=surah_name,
+            verse_ref=f"{surah}:{ayah}",
+            arabic_text=verse_data.get("arabic", ""),
+            translation=verse_data.get("translation", ""),
+            hashtags=hashtags
+        )
+
+        if platform == "x" and len(caption) > 280:
+            caption = caption[:277] + "..."
+
+        return caption.strip()
 
     def get_config_schema(self) -> dict[str, Any]:
-        """Return JSONSchema for pipeline configuration."""
         return CONFIG_SCHEMA

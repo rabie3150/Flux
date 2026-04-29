@@ -89,7 +89,7 @@ Flux is operated by a **single technical owner** (the builder). There are no "en
 | F-11 | All downloaded clips enter a **pending approval** state; never used until approved. | P0 |
 | F-12 | Automatically fetch background images/videos from Pexels/Unsplash using safe keyword lists. | P0 |
 | F-13 | Compose rendered videos: keyed Quran text overlay + background + timing set. | P0 |
-| F-14 | Identify the Quranic verse reference via 3-tier fallback: metadata → Whisper → manual. | P0 |
+| F-14 | Identify the Quranic verse reference via 3-tier fallback: metadata → Gemini AI → manual. | P0 |
 | F-15 | Fetch Arabic text, translation, and tafseer from quran.com API. | P0 |
 | F-16 | Generate per-platform captions via a template engine. | P0 |
 | F-17 | Extract thumbnail from rendered video. | P0 |

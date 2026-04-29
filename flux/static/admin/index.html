@@ -264,6 +264,7 @@
                 <thead>
                     <tr>
                         <th>Status</th>
+                        <th>Verse</th>
                         <th>Method</th>
                         <th>Rendered At</th>
                         <th>Actions</th>
@@ -478,18 +479,48 @@
             try {
                 const data = await api('GET', `/api/pipelines/${currentPipelineId}/production`);
                 const tbody = document.getElementById('production-tbody');
-                tbody.innerHTML = data.map(p => `
-                    <tr>
-                        <td class="status-${p.status === 'ready' || p.status === 'published' ? 'approved' : (p.status === 'failed' ? 'rejected' : 'pending')}">${p.status}</td>
-                        <td>${p.render_method}</td>
-                        <td>${p.rendered_at ? new Date(p.rendered_at).toLocaleString() : '-'}</td>
-                        <td class="actions">
-                            ${p.status === 'rendered' || p.status === 'ready' || p.status === 'published' ? `<button onclick="window.open('/api/pipelines/${currentPipelineId}/production/${p.id}/stream', '_blank')">Preview</button>` : ''}
-                        </td>
-                    </tr>
-                `).join('');
+                tbody.innerHTML = data.map(p => {
+                    const meta = p.content_meta || {};
+                    const verseRef = meta.surah && meta.ayah ? `${meta.surah}:${meta.ayah}` : (meta.surah ? `${meta.surah}:?` : '-');
+                    const surahName = meta.surah_name || '-';
+                    
+                    return `
+                        <tr>
+                            <td class="status-${p.status === 'ready' || p.status === 'published' ? 'approved' : (p.status === 'failed' || p.status === 'verse_unknown' ? 'rejected' : 'pending')}">${p.status}</td>
+                            <td>${surahName}<br><small>${verseRef}</small></td>
+                            <td>${p.render_method}</td>
+                            <td>${p.rendered_at ? new Date(p.rendered_at).toLocaleString() : '-'}</td>
+                            <td class="actions">
+                                <button class="secondary" onclick="openIdentifyModal('${p.id}', ${meta.surah || 0}, ${meta.ayah || 0})">Identify</button>
+                                ${p.status !== 'failed' && p.status !== 'rendering' ? `<button onclick="openPreview('/api/pipelines/${currentPipelineId}/production/${p.id}/stream', true)">Preview</button>` : ''}
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
             } catch (e) {
                 showMsg('Failed to load production queue: ' + e.message, 'error');
+            }
+        }
+
+        function openIdentifyModal(contentId, surah = 0, ayah = 0) {
+            const surahNum = prompt('Enter Surah Number (1-114):', surah || '');
+            if (surahNum === null) return;
+            const ayahNum = prompt('Enter Ayah Number:', ayah || '');
+            if (ayahNum === null) return;
+            
+            if (surahNum && ayahNum) {
+                manualIdentify(contentId, parseInt(surahNum), parseInt(ayahNum));
+            }
+        }
+
+        async function manualIdentify(contentId, surah, ayah) {
+            try {
+                showMsg('Updating verse ID...', 'pending');
+                await api('POST', `/api/pipelines/${currentPipelineId}/production/${contentId}/identify`, { surah, ayah });
+                showMsg('Verse identified and content marked as ready.');
+                loadProduction();
+            } catch (e) {
+                showMsg(e.message, 'error');
             }
         }
 

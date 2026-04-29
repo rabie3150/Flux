@@ -70,6 +70,27 @@ async def get_produced_content(
     return _serialize_production(item)
 
 
+@router.post("/{pipeline_id}/production/{content_id}/identify")
+async def update_production_metadata(
+    pipeline_id: str,
+    content_id: str,
+    data: dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Manually update metadata (e.g. verse ID) for content."""
+    item = await production_service.get_produced_content(db, content_id)
+    if item is None or item.pipeline_id != pipeline_id:
+        raise HTTPException(status_code=404, detail="Produced content not found")
+
+    # If surah and ayah are provided, mark as ready
+    success = bool(data.get("surah") and data.get("ayah"))
+    
+    updated = await production_service.update_identification_result(
+        db, content_id, success=success, metadata=data
+    )
+    return _serialize_production(updated)
+
+
 @router.get("/{pipeline_id}/production/{content_id}/stream")
 async def stream_produced_content(
     pipeline_id: str,

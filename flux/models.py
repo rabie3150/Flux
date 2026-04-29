@@ -177,7 +177,7 @@ class ProducedContent(Base):
     caption_text: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="rendering"
-    )  # rendering, rendered, ready, published, failed
+    )  # rendering, rendered, identifying, ready, verse_unknown, published, failed
     render_log: Mapped[Optional[str]] = mapped_column(Text)
     rendered_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     ready_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
@@ -262,3 +262,19 @@ class Setting(Base):
 
     def __repr__(self) -> str:
         return f"<Setting {self.key}>"
+
+
+class VerseCache(Base):
+    """Local cache for Quranic verse data (immutable)."""
+
+    __tablename__ = "verse_cache"
+
+    surah_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ayah_number: Mapped[int] = mapped_column(Integer, primary_key=True)
+    arabic_text: Mapped[Optional[str]] = mapped_column(Text)
+    translations_json: Mapped[Optional[str]] = mapped_column(Text)  # {translator_id: text}
+    tafseer_json: Mapped[Optional[str]] = mapped_column(Text)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
+
+    def __repr__(self) -> str:
+        return f"<VerseCache {self.surah_number}:{self.ayah_number}>"

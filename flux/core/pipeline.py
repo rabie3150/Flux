@@ -323,36 +323,88 @@ async def trigger_render(
             await production_service.update_render_failed(
                 db, content.id, f"Render returned no file: {error}"
             )
-            return {
-                "pipeline_id": pipeline_id,
-                "content_id": content.id,
-                "status": "failed",
-                "error": error,
-            }
+            async def trigger_render(
+                db: AsyncSession,
+                pipeline_id: str,
+                ingredient_ids: list[str],
+                lock_timeout: float = 30.0,
+            ) -> dict[str, Any]:
+            ...
+                    await production_service.update_render_success(
+                        db,
+                        content.id,
+                        file_path=result.file_path,
+                        thumbnail_path=result.thumbnail_path,
+                        metadata=result.metadata,
+                        caption=result.caption,
+                    )
 
-        await production_service.update_render_success(
-            db,
-            content.id,
-            file_path=result.file_path,
-            thumbnail_path=result.thumbnail_path,
-            metadata=result.metadata,
-            caption=result.caption,
-        )
+                    logger.info(
+                        "Render succeeded for pipeline %s: content=%s file=%s",
+                        pipeline_id, content.id, result.file_path,
+                    )
+                    log_activity(
+                        level="info",
+                        event_type="render_triggered",
+                        message=f"Rendered content {content.id} for pipeline {pipeline_id}",
+                        pipeline_id=pipeline_id,
+                    )
 
-        logger.info(
-            "Render succeeded for pipeline %s: content=%s file=%s",
-            pipeline_id, content.id, result.file_path,
-        )
-        log_activity(
-            level="info",
-            event_type="render_triggered",
-            message=f"Rendered content {content.id} for pipeline {pipeline_id}",
-            pipeline_id=pipeline_id,
-        )
-        return {
-            "pipeline_id": pipeline_id,
-            "content_id": content.id,
-            "status": "rendered",
-            "file_path": result.file_path,
-            "thumbnail_path": result.thumbnail_path,
-        }
+                    # TRIGGER IDENTIFICATION (PHASE 4)
+                    # We do this immediately after render for better UX, though it could be a background job.
+                    id_result = await identify_produced_content(db, content.id)
+
+                    return {
+                        "pipeline_id": pipeline_id,
+                        "content_id": content.id,
+                        "status": "rendered" if not id_result.get("success") else "ready",
+                        "file_path": result.file_path,
+                        "thumbnail_path": result.thumbnail_path,
+                        "identification": id_result,
+                    }
+
+
+            async def identify_produced_content(
+                db: AsyncSession,
+                content_id: str,
+            ) -> dict[str, Any]:
+                """Trigger the identification process for rendered content.
+
+                Transitions content status: rendered -> identifying -> ready (or verse_unknown).
+                """
+                content = await production_service.get_produced_content(db, content_id)
+                if content is None:
+                    raise ValueError(f"ProducedContent {content_id} not found")
+
+                pipeline = await get_pipeline(db, content.pipeline_id)
+                if pipeline is None:
+                    raise ValueError(f"Pipeline {content.pipeline_id} not found")
+
+                plugin = await _resolve_plugin_for_pipeline(db, pipeline)
+                config = json.loads(pipeline.config_json) if pipeline.config_json else {}
+
+                # Transition to identifying
+                await production_service.update_identifying(db, content_id)
+
+                try:
+                    id_data = await plugin.identify_content(pipeline.id, content_id, config)
+
+                    if id_data and id_data.get("surah") and id_data.get("ayah"):
+                        # Success!
+                        await production_service.update_identification_result(
+                            db, content_id, success=True, metadata=id_data
+                        )
+                        return {"success": True, "data": id_data}
+                    else:
+                        # Partial success (surah only) or failure
+                        await production_service.update_identification_result(
+                            db, content_id, success=False, metadata=id_data, error_message="Verse not fully identified"
+                        )
+                        return {"success": False, "reason": "incomplete_id", "data": id_data}
+
+                except Exception as e:
+                    logger.exception("Identification failed for content %s", content_id)
+                    await production_service.update_identification_result(
+                        db, content_id, success=False, error_message=str(e)
+                    )
+                    return {"success": False, "error": str(e)}

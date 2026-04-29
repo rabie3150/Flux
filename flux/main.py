@@ -50,8 +50,11 @@ async def lifespan(app: FastAPI):
                 logger.warning("Event loop is %s, NOT ProactorEventLoop. FFmpeg may fail.", type(loop).__name__)
             else:
                 logger.info("Event loop confirmed as ProactorEventLoop")
-        except Exception:
-            pass
+        except RuntimeError:
+            # Loop not yet running, which is expected in some uvicorn versions
+            logger.debug("Asyncio loop not yet running during lifespan verification")
+        except Exception as e:
+            logger.debug("Failed to verify loop type: %s", e)
 
     try:
         setup_logging()

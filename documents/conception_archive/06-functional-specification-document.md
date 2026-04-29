@@ -230,7 +230,7 @@ CREATE TABLE produced_content (
 
 -- content_meta_json examples by plugin:
 -- Quran: {"verse_ref": "2:255", "surah": 2, "ayah": 255, "review_flag": false}
--- Quran (unknown): {"review_flag": true, "reason": "verse_unknown", "whisper_confidence": 0.42}
+-- Quran (unknown): {"review_flag": true, "reason": "verse_unknown", "gemini_confidence": 0.85}
 -- Hadith: {"source": "Bukhari", "book": 1, "hadith": 2, "narrator": "Abu Huraira"}
 
 -- Quran-specific: verse cache (avoids repeated API calls)
