@@ -221,6 +221,7 @@ async def trigger_fetch(db: AsyncSession, pipeline_id: str) -> dict[str, Any]:
             metadata=item.get("metadata"),
             file_size_bytes=item.get("file_size_bytes"),
             duration_secs=item.get("duration_secs"),
+            status=item.get("status", "pending"),
         )
         created += 1
 

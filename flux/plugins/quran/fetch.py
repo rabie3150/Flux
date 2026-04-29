@@ -7,6 +7,7 @@ ingredient metadata for the core engine to persist.
 from __future__ import annotations
 
 import os
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -113,6 +114,45 @@ def _download_video(video_id: str, video_url: str, output_dir: Path) -> Path | N
         return None
 
 
+def _has_audio(file_path: Path) -> bool:
+    """Check if the video file has audible audio using ffmpeg volumedetect."""
+    try:
+        # Run ffmpeg with volumedetect filter
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-v", "error",
+                "-i", str(file_path),
+                "-af", "volumedetect",
+                "-vn", "-sn", "-dn",
+                "-f", "null",
+                "NUL" if os.name == "nt" else "/dev/null"
+            ],
+            capture_output=True,
+            text=True,
+            # ffmpeg to null output returns 0 usually, but we capture stderr for logs
+        )
+        
+        # ffmpeg logs filter output to stderr
+        output = result.stderr
+        
+        import re
+        match = re.search(r"mean_volume:\s*([-0-9.]+)\s*dB", output)
+        if match:
+            mean_volume = float(match.group(1))
+            # Normal audio is usually > -30dB. Anything < -45dB is effectively silent.
+            if mean_volume < -45.0:
+                logger.warning("Audio mean volume is %.1f dB (silent)", mean_volume)
+                return False
+            return True
+            
+        logger.warning("Could not parse volume for %s", file_path)
+        return False
+    except Exception as e:
+        logger.error("Failed to audit audio on %s: %s", file_path, e)
+        return False
+
+
 def _build_ingredient_meta(video_info: dict[str, Any], file_path: Path) -> dict[str, Any]:
     """Build ingredient metadata dict from video info."""
     file_size = os.path.getsize(file_path) if file_path.exists() else None
@@ -187,6 +227,21 @@ async def fetch_clips(
                 logger.info("Found new video %s, downloading...", video_id)
                 downloaded_path = _download_video(video_id, video["webpage_url"], clips_dir)
                 if downloaded_path:
+                    # 4. Audio Audit
+                    if not _has_audio(downloaded_path):
+                        logger.warning("Video %s is silent (no audio stream). Rejecting.", video_id)
+                        try:
+                            downloaded_path.unlink()
+                        except OSError as e:
+                            logger.error("Failed to delete silent video %s: %s", downloaded_path, e)
+                        
+                        # Add to ingredients as rejected so it's recorded in DB but file is gone
+                        meta = _build_ingredient_meta(video, downloaded_path)
+                        meta["status"] = "rejected"
+                        meta["file_path"] = None  # Prevent file not found errors
+                        ingredients.append(meta)
+                        continue
+
                     ingredients.append(_build_ingredient_meta(video, downloaded_path))
                     logger.info("Added new ingredient: %s", video_id)
 

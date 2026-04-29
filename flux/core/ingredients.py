@@ -54,6 +54,7 @@ async def create_ingredient(
     metadata: dict[str, Any] | None = None,
     file_size_bytes: int | None = None,
     duration_secs: float | None = None,
+    status: str = "pending",
 ) -> Ingredient:
     """Insert a new ingredient (typically called by plugin fetch)."""
     ingredient = Ingredient(
@@ -64,7 +65,7 @@ async def create_ingredient(
         metadata_json=json.dumps(metadata) if metadata else None,
         file_size_bytes=file_size_bytes,
         duration_secs=duration_secs,
-        status="pending",
+        status=status,
     )
     db.add(ingredient)
     await db.commit()
