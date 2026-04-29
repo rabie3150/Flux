@@ -134,7 +134,18 @@ class QuranPlugin(ContentPlugin):
         # or fall back to DB query for direct calls.
         render_ingredients = config.get("_render_ingredients", {})
         clip_path: str | None = render_ingredients.get("clip_path")
-        bg_paths: list[str] = render_ingredients.get("bg_paths", [])
+        bg_paths_raw = render_ingredients.get("bg_paths")
+        
+        if isinstance(bg_paths_raw, str):
+            bg_paths = [bg_paths_raw]
+        elif isinstance(bg_paths_raw, list):
+            bg_paths = bg_paths_raw
+        else:
+            bg_paths = []
+
+        # If we have any single-character strings in bg_paths, it means a string was unpacked as a list somewhere upstream.
+        # Let's clean it up to be safe.
+        bg_paths = [p for p in bg_paths if len(p) > 1]
 
         if not clip_path or not bg_paths:
             from flux.db import AsyncSessionLocal
@@ -151,11 +162,16 @@ class QuranPlugin(ContentPlugin):
                 )
                 ingredients = result.scalars().all()
 
+                # Rebuild from scratch if incomplete to avoid accidental string unpacking issues
+                bg_paths = []
+                clip_path = None
+                
                 for ing in ingredients:
-                    if ing.type == "quran_clip" and ing.file_path:
+                    if ing.type == "quran_clip" and not clip_path:
                         clip_path = ing.file_path
                     elif ing.type in ("bg_image", "bg_video") and ing.file_path:
-                        bg_paths.append(ing.file_path)
+                        if ing.file_path not in bg_paths:
+                            bg_paths.append(ing.file_path)
 
         if not clip_path:
             logger.error("No approved quran_clip found among ingredients for pipeline %s", pipeline_id)

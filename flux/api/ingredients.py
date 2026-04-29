@@ -109,3 +109,42 @@ async def delete_ingredients(
     count = await ingredient_service.delete_ingredients(db, pipeline_id, req.ingredient_ids)
     logger.info("Deleted %d ingredients for pipeline %s", count, pipeline_id)
     return {"deleted": count, "ingredient_ids": req.ingredient_ids}
+
+
+from fastapi.responses import FileResponse
+from pathlib import Path
+from fastapi import HTTPException
+
+@router.get("/api/pipelines/{pipeline_id}/ingredients/{ingredient_id}/preview")
+async def preview_ingredient(
+    pipeline_id: str,
+    ingredient_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> FileResponse:
+    """Stream an ingredient file for preview in the admin panel."""
+    from flux.models import Ingredient
+    from sqlalchemy import select
+    
+    result = await db.execute(
+        select(Ingredient).where(
+            Ingredient.id == ingredient_id, 
+            Ingredient.pipeline_id == pipeline_id
+        )
+    )
+    ingredient = result.scalar_one_or_none()
+    
+    if not ingredient or not ingredient.file_path:
+        raise HTTPException(status_code=404, detail="Ingredient file not found")
+        
+    file_path = Path(ingredient.file_path)
+    if not file_path.exists():
+        raise HTTPException(status_code=404, detail="File missing from disk")
+        
+    media_type = "video/mp4" if file_path.suffix.lower() in (".mp4", ".mov", ".webm") else "image/jpeg"
+    
+    return FileResponse(
+        path=str(file_path),
+        media_type=media_type,
+        filename=file_path.name,
+        headers={"Accept-Ranges": "bytes"}
+    )

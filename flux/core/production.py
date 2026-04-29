@@ -154,7 +154,7 @@ async def list_produced_content(
         stmt = stmt.where(ProducedContent.status == status)
 
     stmt = (
-        stmt.order_by(ProducedContent.created_at.desc())
+        stmt.order_by(ProducedContent.rendered_at.desc())
         .limit(limit)
         .offset(offset)
     )

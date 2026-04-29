@@ -55,6 +55,7 @@ async def _run_ffmpeg(
     logger.debug("FFmpeg cmd: %s", " ".join(cmd))
 
     try:
+        # Standard async way (requires ProactorEventLoop on Windows)
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
@@ -63,6 +64,30 @@ async def _run_ffmpeg(
         stdout, stderr = await asyncio.wait_for(
             proc.communicate(), timeout=timeout
         )
+        return proc.returncode or 0, stdout.decode("utf-8", errors="replace"), stderr.decode("utf-8", errors="replace")
+    except NotImplementedError:
+        # WINDOWS FALLBACK: If create_subprocess_exec is not implemented,
+        # run it in a thread using standard subprocess.run.
+        logger.warning("asyncio.create_subprocess_exec not supported (likely not ProactorEventLoop). Using thread fallback.")
+        import subprocess
+        
+        def _sync_run():
+            p = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout
+            )
+            return p.returncode, p.stdout, p.stderr
+
+        try:
+            return await asyncio.to_thread(_sync_run)
+        except subprocess.TimeoutExpired:
+            return -1, "", "FFmpeg timed out (sync fallback)"
+        except Exception as e:
+            return -1, "", f"FFmpeg sync fallback failed: {e}"
     except asyncio.TimeoutError:
         logger.error("FFmpeg timed out after %.0fs", timeout)
         try:
@@ -75,10 +100,6 @@ async def _run_ffmpeg(
         logger.error("FFmpeg not found in PATH")
         return -1, "", "FFmpeg not found in PATH"
 
-    out = stdout.decode("utf-8", errors="replace")
-    err = stderr.decode("utf-8", errors="replace")
-    return proc.returncode or 0, out, err
-
 
 def _build_colorkey_filter() -> str:
     """Build the FFmpeg colorkey filter string for black background removal."""
@@ -90,26 +111,29 @@ def _build_colorkey_filter() -> str:
 
 
 def _build_scale_filter(width: int, height: int) -> str:
-    """Build FFmpeg scale filter maintaining aspect ratio, fitting inside box."""
+    """Build FFmpeg scale filter maintaining aspect ratio, fitting inside box.
+    Ensures dimensions are divisible by 2 for encoder compatibility.
+    """
     return (
-        f"scale={width}:{height}:"
-        f"force_original_aspect_ratio=decrease"
+        f"scale='if(gt(iw/ih,{width}/{height}),{width},-2)':'if(gt(iw/ih,{width}/{height}),-2,{height})'"
     )
 
 
 async def render_video(
     clip_path: str,
-    background_path: str,
+    background_paths: list[str],
     output_path: str,
     duration: float | None = None,
+    image_duration: float = 5.0,
 ) -> str:
     """Render a Quran clip composited over a background.
 
     Args:
         clip_path: Path to the Quran clip MP4 (black background).
-        background_path: Path to background image or video.
+        background_paths: List of paths to background images or videos.
         output_path: Where to write the rendered MP4.
         duration: Optional duration limit in seconds (trims output).
+        image_duration: Duration to show each image in a slideshow.
 
     Returns:
         Absolute path to the rendered MP4.
@@ -117,15 +141,26 @@ async def render_video(
     Raises:
         RuntimeError: If FFmpeg fails or output is not created.
     """
+    if isinstance(background_paths, str):
+        background_paths = [background_paths]
+    
+    # If we got a list like ['s', 't', 'o', ...], join it back and wrap it.
+    # This handles rare cases of accidental string iteration.
+    if isinstance(background_paths, list) and len(background_paths) > 0 and all(len(x) == 1 for x in background_paths):
+        background_paths = ["".join(background_paths)]
+
+    if not background_paths:
+        raise ValueError("At least one background is required")
+        
+    for bg in background_paths:
+        if not Path(bg).exists():
+            raise FileNotFoundError(f"Background not found: {bg}")
+
     if not Path(clip_path).exists():
         raise FileNotFoundError(f"Clip not found: {clip_path}")
-    if not Path(background_path).exists():
-        raise FileNotFoundError(f"Background not found: {background_path}")
 
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
 
-    bg_ext = Path(background_path).suffix.lower()
-    is_video_bg = bg_ext in (".mp4", ".mov", ".webm", ".mkv")
+    is_video_bg = any(Path(p).suffix.lower() in (".mp4", ".mov", ".webm", ".mkv") for p in background_paths)
 
     # Build filtergraph
     colorkey = _build_colorkey_filter()
@@ -134,25 +169,43 @@ async def render_video(
     # Inputs:
     #   0 = background (image or video)
     #   1 = Quran clip
+    # Fix: use yuva420p for foreground to preserve alpha channel from colorkey
     filter_complex = (
         f"[0:v]{scale},setsar=1,fps={CANVAS_FPS},format=yuv420p[bg];"
-        f"[1:v]{colorkey},{scale},format=yuv420p[fg];"
+        f"[1:v]{colorkey},{scale},format=yuva420p[fg];"
         f"[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1[video]"
     )
 
     args: list[str] = []
+    concat_path = None
 
-    if not is_video_bg:
-        # Loop static image to match clip duration
-        args.extend(["-loop", "1", "-i", background_path])
+    if is_video_bg:
+        # For video background, loop indefinitely; overlay=shortest=1 will trim it.
+        args.extend(["-stream_loop", "-1", "-i", background_paths[0]])
     else:
-        args.extend(["-i", background_path])
+        if len(background_paths) == 1:
+            # Loop static image to match clip duration
+            args.extend(["-loop", "1", "-i", background_paths[0]])
+        else:
+            # Slideshow using concat demuxer
+            concat_path = Path(output_path).with_suffix('.concat.txt')
+            lines = ["ffconcat version 1.0"]
+            for bg in background_paths:
+                safe_path = str(Path(bg).absolute()).replace('\\', '/')
+                lines.append(f"file '{safe_path}'")
+                lines.append(f"duration {image_duration}")
+            # Add the last file again without duration to ensure proper playback of last frame
+            last_safe_path = str(Path(background_paths[-1]).absolute()).replace('\\', '/')
+            lines.append(f"file '{last_safe_path}'")
+            concat_path.write_text("\n".join(lines))
+            
+            args.extend(["-stream_loop", "-1", "-f", "concat", "-safe", "0", "-i", str(concat_path)])
 
     args.extend([
         "-i", clip_path,
         "-filter_complex", filter_complex,
         "-map", "[video]",
-        "-map", "1:a?",
+        "-map", "1:a?",  # Map audio from the Quran clip
         "-c:v", "libx264",
         "-preset", ENCODE_PRESET,
         "-crf", str(ENCODE_CRF),
@@ -160,7 +213,6 @@ async def render_video(
         "-c:a", "aac",
         "-b:a", "128k",
         "-movflags", "+faststart",
-        "-shortest",
     ])
 
     if duration:
@@ -168,7 +220,11 @@ async def render_video(
 
     args.append(output_path)
 
-    returncode, stdout, stderr = await _run_ffmpeg(*args)
+    try:
+        returncode, stdout, stderr = await _run_ffmpeg(*args)
+    finally:
+        if concat_path and concat_path.exists():
+            concat_path.unlink()
 
     if returncode != 0:
         raise RuntimeError(
@@ -253,6 +309,12 @@ async def render_from_ingredients(
     """
     if not background_paths:
         raise ValueError("At least one background is required for rendering")
+        
+    if isinstance(background_paths, str):
+        background_paths = [background_paths]
+    elif not isinstance(background_paths, (list, tuple)):
+        # Fallback for other iterables, but we already handled str
+        background_paths = list(background_paths)
 
     prod_dir = _production_dir()
     thumb_dir = _thumbnails_dir()
@@ -264,11 +326,8 @@ async def render_from_ingredients(
     output_video = str(prod_dir / f"{clip_name}_rendered.mp4")
     output_thumb = str(thumb_dir / f"{clip_name}_thumb.jpg")
 
-    # Use first background for v1 (slideshow support in v3.1)
-    bg_path = background_paths[0]
-
-    # Render
-    rendered_path = await render_video(clip_path, bg_path, output_video)
+    # Render using the list of background paths (supports single or slideshow)
+    rendered_path = await render_video(clip_path, background_paths, output_video)
 
     # Thumbnail at 2s
     thumb_path = await extract_thumbnail(rendered_path, output_thumb, time_sec=2.0)
@@ -289,7 +348,7 @@ async def render_from_ingredients(
         "metadata": {
             "render_method": "video_compose",
             "clip_path": clip_path,
-            "background_path": bg_path,
+            "background_path": background_paths[0] if background_paths else None,
             "canvas": {
                 "width": CANVAS_WIDTH,
                 "height": CANVAS_HEIGHT,

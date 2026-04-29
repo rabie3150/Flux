@@ -269,7 +269,7 @@ async def trigger_pipeline(
             from flux.core.ingredients import list_ingredients
 
             approved = await list_ingredients(
-                db, pipeline_id, status_filter="approved", limit=10
+                db, pipeline_id, status_filter="approved", limit=20
             )
             clip = next((i for i in approved if i.type == "quran_clip"), None)
             bgs = [i for i in approved if i.type in ("bg_image", "bg_video")]
@@ -277,6 +277,11 @@ async def trigger_pipeline(
                 raise HTTPException(
                     status_code=400,
                     detail="No approved quran_clip found. Approve ingredients first.",
+                )
+            if not bgs:
+                raise HTTPException(
+                    status_code=400,
+                    detail="No approved background found. Approve a background image or video first.",
                 )
             ingredient_ids = [clip.id] + [i.id for i in bgs[:3]]
 

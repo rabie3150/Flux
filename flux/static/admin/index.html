@@ -90,6 +90,100 @@
             table { font-size: 0.8rem; }
             th, td { padding: 0.3rem; }
         }
+        
+        /* Ingredient Cards */
+        .ing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        .ing-card {
+            background: #2a2a4e;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            border: 2px solid transparent;
+            transition: border-color 0.2s;
+        }
+        .ing-card:hover {
+            border-color: #00d4aa;
+        }
+        .ing-card.selected {
+            border-color: #00d4aa;
+            background: #3a3a6e;
+        }
+        .ing-checkbox {
+            position: absolute;
+            top: 0.5rem;
+            left: 0.5rem;
+            z-index: 10;
+            transform: scale(1.5);
+            cursor: pointer;
+        }
+        .ing-thumb-container {
+            width: 100%;
+            height: 140px;
+            background: #0f0f23;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            overflow: hidden;
+        }
+        .ing-thumb-container video, .ing-thumb-container img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: cover;
+        }
+        .ing-thumb-placeholder {
+            color: #888;
+            font-size: 0.8rem;
+        }
+        .ing-details {
+            padding: 0.8rem;
+            font-size: 0.85rem;
+        }
+        .ing-title {
+            font-weight: bold;
+            margin-bottom: 0.3rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            color: #fff;
+        }
+        
+        /* Modal Styles */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-content {
+            max-width: 90%;
+            max-height: 90%;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-close {
+            position: absolute;
+            top: -40px;
+            right: 0;
+            color: white;
+            font-size: 2.5rem;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
     </style>
 </head>
 <body>
@@ -133,8 +227,56 @@
         </table>
     </div>
 
+    <!-- Pipeline Detail View (Hidden by default) -->
+    <div id="pipeline-detail-view" style="display: none;">
+        <button class="secondary" onclick="closePipelineDetail()" style="margin-bottom: 1rem;">&larr; Back to Dashboard</button>
+        <h2 id="detail-pl-name">Pipeline Details</h2>
+        
+        <div style="margin-bottom: 1rem; border-bottom: 1px solid #2a2a4e;">
+            <button class="secondary" onclick="switchTab('ingredients')" id="tab-ingredients">Ingredients</button>
+            <button class="secondary" onclick="switchTab('production')" id="tab-production">Production</button>
+        </div>
+
+        <!-- Ingredients Tab -->
+        <div id="view-ingredients" class="card">
+            <h3>Ingredient Library</h3>
+            <div class="form-row" style="margin: 1rem 0; justify-content: space-between;">
+                <div class="actions">
+                    <button onclick="triggerFetch()">Fetch New</button>
+                    <button onclick="approveSelected()" class="status-approved">Approve Selected</button>
+                    <button onclick="rejectSelected()" class="danger">Reject Selected</button>
+                </div>
+                <div style="display: flex; align-items: center; gap: 0.5rem; background: #0f0f23; padding: 0.4rem 0.8rem; border-radius: 4px; border: 1px solid #2a2a4e;">
+                    <input type="checkbox" id="selectAllIngs" onchange="toggleAll(this, '.ing-chk')" style="margin: 0; width: 1.2rem; height: 1.2rem; cursor: pointer;"> 
+                    <label for="selectAllIngs" style="margin: 0; cursor: pointer;">Select All</label>
+                </div>
+            </div>
+            <div id="ingredients-grid" class="ing-grid"></div>
+        </div>
+
+        <!-- Production Tab -->
+        <div id="view-production" class="card" style="display: none;">
+            <h3>Production Queue</h3>
+            <div class="form-row" style="margin: 1rem 0;">
+                <button onclick="triggerRender()">Render Next Video</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Method</th>
+                        <th>Rendered At</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="production-tbody"></tbody>
+            </table>
+        </div>
+    </div>
+
     <!-- Workers -->
-    <h2>Platform Workers</h2>
+    <div id="workers-section">
+        <h2>Platform Workers</h2>
     <div class="card">
         <div class="form-row">
             <label>Platform:</label>
@@ -166,6 +308,14 @@
             </thead>
             <tbody id="activity-tbody"></tbody>
         </table>
+    </div>
+
+    <!-- Fullscreen Preview Modal -->
+    <div id="preview-modal" class="modal-overlay" onclick="closePreview()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <button class="modal-close" onclick="closePreview()">&times;</button>
+            <div id="preview-container"></div>
+        </div>
     </div>
 
     <script>
@@ -209,6 +359,7 @@
                         <td class="${p.enabled ? 'status-enabled' : 'status-disabled'}">${p.enabled ? 'Enabled' : 'Disabled'}</td>
                         <td>${new Date(p.created_at).toLocaleDateString()}</td>
                         <td class="actions">
+                            <button onclick="openPipelineDetail('${p.id}', '${p.name}')">Manage</button>
                             <button class="secondary" onclick="togglePipeline('${p.id}', ${!p.enabled})">${p.enabled ? 'Disable' : 'Enable'}</button>
                             <button class="danger" onclick="deletePipeline('${p.id}')">Delete</button>
                         </td>
@@ -216,6 +367,178 @@
                 `).join('');
             } catch (e) {
                 showMsg('Failed to load pipelines: ' + e.message, 'error');
+            }
+        }
+
+        let currentPipelineId = null;
+
+        function openPipelineDetail(id, name) {
+            currentPipelineId = id;
+            document.getElementById('detail-pl-name').textContent = `Pipeline: ${name}`;
+            document.getElementById('workers-section').style.display = 'none';
+            document.querySelectorAll('h2').forEach(el => {
+                if (el.textContent !== 'Recent Activity' && el.textContent !== 'Pipeline Details') el.style.display = 'none';
+            });
+            document.querySelectorAll('.card').forEach(el => {
+                if (el.id !== 'view-ingredients' && el.id !== 'view-production' && !el.querySelector('#activity-tbody')) el.style.display = 'none';
+            });
+            document.getElementById('pipeline-detail-view').style.display = 'block';
+            switchTab('ingredients');
+        }
+
+        function closePipelineDetail() {
+            currentPipelineId = null;
+            document.getElementById('pipeline-detail-view').style.display = 'none';
+            document.getElementById('workers-section').style.display = 'block';
+            document.querySelectorAll('h2').forEach(el => el.style.display = 'block');
+            document.querySelectorAll('.card').forEach(el => el.style.display = 'block');
+        }
+
+        function switchTab(tab) {
+            document.getElementById('view-ingredients').style.display = tab === 'ingredients' ? 'block' : 'none';
+            document.getElementById('view-production').style.display = tab === 'production' ? 'block' : 'none';
+            document.getElementById('tab-ingredients').style.background = tab === 'ingredients' ? '#00d4aa' : '#2a2a4e';
+            document.getElementById('tab-ingredients').style.color = tab === 'ingredients' ? '#0f0f23' : '#e0e0e0';
+            document.getElementById('tab-production').style.background = tab === 'production' ? '#00d4aa' : '#2a2a4e';
+            document.getElementById('tab-production').style.color = tab === 'production' ? '#0f0f23' : '#e0e0e0';
+            
+            if (tab === 'ingredients') loadIngredients();
+            if (tab === 'production') loadProduction();
+        }
+
+        function toggleAll(source, selector) {
+            document.querySelectorAll(selector).forEach(chk => {
+                chk.checked = source.checked;
+                // Dispatch change event so the card styling updates
+                chk.dispatchEvent(new Event('change'));
+            });
+        }
+
+        function getSelected(selector) {
+            return Array.from(document.querySelectorAll(selector))
+                .filter(chk => chk.checked)
+                .map(chk => chk.value);
+        }
+        
+        function openPreview(url, isVideo) {
+            const container = document.getElementById('preview-container');
+            if (isVideo) {
+                container.innerHTML = `<video src="${url}" controls autoplay playsinline loop></video>`;
+            } else {
+                container.innerHTML = `<img src="${url}">`;
+            }
+            document.getElementById('preview-modal').style.display = 'flex';
+        }
+
+        function closePreview() {
+            document.getElementById('preview-modal').style.display = 'none';
+            document.getElementById('preview-container').innerHTML = '';
+        }
+
+        async function loadIngredients() {
+            if (!currentPipelineId) return;
+            try {
+                const data = await api('GET', `/api/pipelines/${currentPipelineId}/ingredients`);
+                const grid = document.getElementById('ingredients-grid');
+                grid.innerHTML = data.ingredients.map(i => {
+                    const isVideo = i.file_path && (i.file_path.toLowerCase().endsWith('.mp4') || i.file_path.toLowerCase().endsWith('.mov') || i.file_path.toLowerCase().endsWith('.webm'));
+                    const isImage = i.file_path && (i.file_path.toLowerCase().endsWith('.jpg') || i.file_path.toLowerCase().endsWith('.jpeg') || i.file_path.toLowerCase().endsWith('.png'));
+                    const previewUrl = `/api/pipelines/${currentPipelineId}/ingredients/${i.id}/preview`;
+                    
+                    let thumbHtml = `<div class="ing-thumb-placeholder">No Preview</div>`;
+                    if (isVideo) {
+                        thumbHtml = `<video src="${previewUrl}" preload="metadata" muted loop onmouseover="this.play()" onmouseout="this.pause()"></video>`;
+                    } else if (isImage) {
+                        thumbHtml = `<img src="${previewUrl}" loading="lazy">`;
+                    }
+
+                    return `
+                        <div class="ing-card" id="card-${i.id}">
+                            <input type="checkbox" class="ing-checkbox ing-chk" value="${i.id}" onchange="document.getElementById('card-${i.id}').classList.toggle('selected', this.checked)">
+                            <div class="ing-thumb-container" onclick="openPreview('${previewUrl}', ${isVideo})">
+                                ${thumbHtml}
+                            </div>
+                            <div class="ing-details">
+                                <div class="ing-title" title="${i.id}">${i.type}</div>
+                                <div>Status: <span class="status-${i.status}">${i.status}</span></div>
+                                <div>Size: ${i.duration_secs ? i.duration_secs.toFixed(1) + 's' : (i.file_size_bytes/1024/1024).toFixed(2) + 'MB'}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                const selectAll = document.getElementById('selectAllIngs');
+                if (selectAll) selectAll.checked = false;
+            } catch (e) {
+                showMsg('Failed to load ingredients: ' + e.message, 'error');
+            }
+        }
+
+        async function loadProduction() {
+            if (!currentPipelineId) return;
+            try {
+                const data = await api('GET', `/api/pipelines/${currentPipelineId}/production`);
+                const tbody = document.getElementById('production-tbody');
+                tbody.innerHTML = data.map(p => `
+                    <tr>
+                        <td class="status-${p.status === 'ready' || p.status === 'published' ? 'approved' : (p.status === 'failed' ? 'rejected' : 'pending')}">${p.status}</td>
+                        <td>${p.render_method}</td>
+                        <td>${p.rendered_at ? new Date(p.rendered_at).toLocaleString() : '-'}</td>
+                        <td class="actions">
+                            ${p.status === 'rendered' || p.status === 'ready' || p.status === 'published' ? `<button onclick="window.open('/api/pipelines/${currentPipelineId}/production/${p.id}/stream', '_blank')">Preview</button>` : ''}
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (e) {
+                showMsg('Failed to load production queue: ' + e.message, 'error');
+            }
+        }
+
+        async function triggerFetch() {
+            if (!currentPipelineId) return;
+            try {
+                showMsg('Triggering fetch...', 'pending');
+                await api('POST', `/api/pipelines/${currentPipelineId}/trigger`, { action: 'fetch' });
+                showMsg('Fetch job queued. This may take a moment.');
+                setTimeout(loadIngredients, 2000);
+            } catch (e) {
+                showMsg(e.message, 'error');
+            }
+        }
+
+        async function triggerRender() {
+            if (!currentPipelineId) return;
+            try {
+                showMsg('Triggering render...', 'pending');
+                await api('POST', `/api/pipelines/${currentPipelineId}/trigger`, { action: 'render' });
+                showMsg('Render complete.');
+                loadProduction();
+            } catch (e) {
+                showMsg(e.message, 'error');
+            }
+        }
+
+        async function approveSelected() {
+            const ids = getSelected('.ing-chk');
+            if (!ids.length) return showMsg('No ingredients selected', 'error');
+            try {
+                await api('POST', `/api/pipelines/${currentPipelineId}/ingredients/approve`, { ingredient_ids: ids });
+                showMsg(`Approved ${ids.length} ingredients`);
+                loadIngredients();
+            } catch (e) {
+                showMsg(e.message, 'error');
+            }
+        }
+
+        async function rejectSelected() {
+            const ids = getSelected('.ing-chk');
+            if (!ids.length) return showMsg('No ingredients selected', 'error');
+            if (!confirm(`Reject ${ids.length} ingredients?`)) return;
+            try {
+                await api('POST', `/api/pipelines/${currentPipelineId}/ingredients/reject`, { ingredient_ids: ids });
+                showMsg(`Rejected ${ids.length} ingredients`);
+                loadIngredients();
+            } catch (e) {
+                showMsg(e.message, 'error');
             }
         }
 

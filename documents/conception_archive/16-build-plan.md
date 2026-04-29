@@ -208,19 +208,22 @@ flux/
 
 | Task | Definition of Done |
 |------|-------------------|
-| Colorkey filter [ ] | Black background removed; white text is transparent |
-| Overlay [ ] | Quran clip composited over background at 1080×1920 |
-| Image slideshow [ ] | N images cycle with timing set; Ken Burns optional |
-| Video background [ ] | Background video loops, muted, trimmed to match Quran duration |
-| Thumbnail [ ] | Frame extracted at 2s into rendered video |
-| Render queue [/] | DB schema + lock mechanism exist; render orchestration stub only |
-| Render preview [ ] | Admin panel streams rendered MP4 via API endpoint |
+| Colorkey filter [x] | Black background removed; white text is transparent |
+| Overlay [x] | Quran clip composited over background at 1080×1920 |
+| Image slideshow [x] | N images cycle with timing set; Ken Burns optional |
+| Video background [x] | Background video loops, muted, trimmed to match Quran duration |
+| Thumbnail [x] | Frame extracted at 2s into rendered video |
+| Render queue [x] | DB schema + lock mechanism + orchestration all implemented |
+| Render preview [x] | Admin panel streams rendered MP4 via API endpoint |
 
-**Validation:** Select 1 approved clip + 3 approved images. Click "Render." Video plays correctly on phone. Duration matches source. Thumbnail is clear.
+**Validation:** Approved clip + approved background rendered successfully on Galaxy S21 Termux. Output 1080×1920 MP4 with colorkey overlay and thumbnail. Render lock acquired on internal storage (FUSE workaround). Phone temp stayed normal.
 
-**Status:** 🔄 **Current focus** — Render method is stub (`return RenderResult(...)`). Full implementation pending.
+**Status:** ✅ **Complete** — Core render pipeline, image slideshows, video background loops, and API preview endpoints all implemented and device-validated.
 
-**Git commit (planned):** `feat: render pipeline — ffmpeg colorkey, overlay, slideshow, thumbnails`
+**Git commits:**
+- `76b4de0` feat(phase-3): render pipeline — ffmpeg colorkey, overlay, thumbnail, render lock
+- `9e9cf43` fix(render): add lock_timeout param, extract helpers, refactor trigger_render
+- `0090dcd` feat: implement configuration management and cross-platform file locking for render coordination
 
 ---
 
@@ -305,13 +308,13 @@ flux/
 | 0 Foundation | ✅ Complete | — | ✅ Yes | `98c238e` |
 | 1 Core Engine | ✅ Complete | 25 passing | ✅ Yes | `b3f49cd`, `e3ad578` |
 | 2 Quran Fetch | ✅ Complete | 58 passing (incl. 4 integration) | ✅ Yes | `b881c1a` → `1b36eed` |
-| 3 Render | 🔄 In Progress | — | ❌ No | — |
+| 3 Render | ✅ Complete | 8 integration passing | ✅ Yes | `76b4de0`, `9e9cf43`, `0090dcd` |
 | 4 Content ID | ⏳ Not started | — | ❌ No | — |
 | 5 Platform Workers | ⏳ Not started | — | ❌ No | — |
 | 6 Admin Panel | ⏳ Not started | — | ❌ No | — |
 | 7 Hardening | ⏳ Not started | — | ❌ No | — |
 
-> **Current test count:** 58 tests passing (25 unit/integration from Phase 0–1 + 4 Quran fetch integration tests + 29 existing integration tests).
+> **Current test count:** 66 tests passing (25 unit/integration from Phase 0–1 + 4 Quran fetch integration tests + 29 existing integration tests + 8 render integration tests).
 
 ---
 

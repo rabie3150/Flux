@@ -25,7 +25,7 @@ MAX_SHORT_DURATION = 120
 _YDL_OPTS_BASE: dict[str, Any] = {
     "quiet": True,
     "no_warnings": True,
-    "format": "best[height<=720][ext=mp4]/best[ext=mp4]/best",
+    "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
     "merge_output_format": "mp4",
     "writethumbnail": False,
     "writeinfojson": False,
@@ -87,13 +87,13 @@ def _extract_shorts_from_channel(channel_url: str, max_clips: int) -> list[dict[
 
 
 def _download_video(video_id: str, video_url: str, output_dir: Path) -> Path | None:
-    """Download a single video to output_dir. Returns file path or None."""
+    """Download a single video to output_dir. Returns file path or None if already downloaded or failed."""
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{video_id}.mp4"
 
     if output_path.exists():
         logger.debug("Video %s already downloaded, skipping", video_id)
-        return output_path
+        return None
 
     opts = {
         **_YDL_OPTS_BASE,

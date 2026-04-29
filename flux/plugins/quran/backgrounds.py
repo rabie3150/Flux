@@ -153,12 +153,6 @@ async def _fetch_pexels(
                 existing = _already_downloaded("pexels", photo_id)
                 if existing:
                     logger.debug("Pexels image %s already fetched", photo_id)
-                    ingredients.append(_build_bg_meta(
-                        existing, "pexels", photo_id,
-                        photographer,
-                        photo_url,
-                        [keyword],
-                    ))
                     continue
 
                 # Download the image
@@ -248,12 +242,6 @@ async def _fetch_unsplash(
                 existing = _already_downloaded("unsplash", img_id)
                 if existing:
                     logger.debug("Unsplash image %s already fetched", img_id)
-                    ingredients.append(_build_bg_meta(
-                        existing, "unsplash", img_id,
-                        photographer,
-                        photo_url,
-                        [keyword],
-                    ))
                     continue
 
                 # Download regular size image
