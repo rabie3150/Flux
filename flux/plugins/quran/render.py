@@ -13,6 +13,7 @@ Termux/ARM considerations:
 from __future__ import annotations
 
 import asyncio
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -120,18 +121,18 @@ def _build_scale_filter(width: int, height: int) -> str:
 
 
 def _build_liven_up_filter(width: int, height: int) -> str:
-    """Build a smooth panning/zooming effect using crop and scale.
-    Guaranteed to work on all FFmpeg versions unlike zoompan.
+    """Build a smooth panning effect using crop and scale.
+    Guaranteed to work on all FFmpeg versions.
     """
     # Scale up by 20% to give room for movement without black edges
     sw, sh = int(width * 1.2), int(height * 1.2)
     # Ensure dimensions are divisible by 2 for the encoder
     sw, sh = (sw // 2) * 2, (sh // 2) * 2
     
-    # x/y coordinates oscillate slowly over time (t)
-    # This creates a gentle 'breathing' or 'handheld' movement effect
-    x_expr = f"(iw-ow)/2 + (iw/30)*sin(t/1.5)"
-    y_expr = f"(ih-oh)/2 + (ih/30)*cos(t/2.2)"
+    # x/y coordinates oscillate slowly over frame count (n)
+    # Amplitude increased to be clearly visible
+    x_expr = f"(iw-ow)/2 + (iw/15)*sin(n/45)"
+    y_expr = f"(ih-oh)/2 + (ih/15)*cos(n/60)"
     
     return (
         f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},"
@@ -165,10 +166,11 @@ async def render_video(
     """
     if isinstance(background_paths, str):
         background_paths = [background_paths]
+    elif not isinstance(background_paths, list):
+        background_paths = list(background_paths)
     
-    # If we got a list like ['s', 't', 'o', ...], join it back and wrap it.
-    # This handles rare cases of accidental string iteration.
-    if isinstance(background_paths, list) and len(background_paths) > 0 and all(len(x) == 1 for x in background_paths):
+    # Robust check for character list trap
+    if background_paths and all(isinstance(x, str) and len(x) == 1 for x in background_paths):
         background_paths = ["".join(background_paths)]
 
     if not background_paths:
@@ -189,18 +191,18 @@ async def render_video(
     scale = _build_scale_filter(CANVAS_WIDTH, CANVAS_HEIGHT)
     
     if is_video_bg or not ken_burns:
-        bg_filter = f"{scale},setsar=1,fps={CANVAS_FPS},format=yuv420p"
+        bg_filter = f"{scale},setsar=1,fps={CANVAS_FPS}"
     else:
-        bg_filter = f"{_build_liven_up_filter(CANVAS_WIDTH, CANVAS_HEIGHT)},setsar=1,fps={CANVAS_FPS},format=yuv420p"
+        bg_filter = f"{_build_liven_up_filter(CANVAS_WIDTH, CANVAS_HEIGHT)},setsar=1,fps={CANVAS_FPS}"
 
     # Inputs:
     #   0 = background (image or video)
     #   1 = Quran clip
-    # Fix: use yuva420p for foreground to preserve alpha channel from colorkey
+    # Fix: Move format=yuv420p to the very end to prevent alpha stripping
     filter_complex = (
         f"[0:v]{bg_filter}[bg];"
         f"[1:v]{colorkey},{scale},format=yuva420p[fg];"
-        f"[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1[video]"
+        f"[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1,format=yuv420p[video]"
     )
 
     args: list[str] = []
@@ -214,8 +216,9 @@ async def render_video(
             # Loop static image to match clip duration
             args.extend(["-loop", "1", "-i", background_paths[0]])
         else:
-            # Slideshow using concat demuxer
-            concat_path = Path(output_path).with_suffix('.concat.txt')
+            # Slideshow using concat demuxer with unique temp filename
+            temp_id = uuid.uuid4().hex[:8]
+            concat_path = Path(output_path).with_suffix(f".{temp_id}.concat.txt")
             lines = ["ffconcat version 1.0"]
             for bg in background_paths:
                 safe_path = str(Path(bg).absolute()).replace('\\', '/')
