@@ -189,8 +189,15 @@ class QuranPlugin(ContentPlugin):
                 metadata={"error": "no_background", "pipeline_id": pipeline_id},
             )
 
+        # Merge with defaults
+        cfg = _deep_merge(DEFAULT_CONFIG, config)
+        ken_burns = cfg.get("ken_burns", True)
+        image_duration = cfg.get("image_duration", 5.0)
+
         try:
-            result = await render_from_ingredients(clip_path, bg_paths, config)
+            result = await render_from_ingredients(
+                clip_path, bg_paths, cfg
+            )
         except Exception as e:
             logger.error("Render failed for pipeline %s: %s", pipeline_id, e)
             return RenderResult(

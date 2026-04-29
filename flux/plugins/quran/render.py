@@ -119,12 +119,33 @@ def _build_scale_filter(width: int, height: int) -> str:
     )
 
 
+def _build_liven_up_filter(width: int, height: int) -> str:
+    """Build a smooth panning/zooming effect using crop and scale.
+    Guaranteed to work on all FFmpeg versions unlike zoompan.
+    """
+    # Scale up by 20% to give room for movement without black edges
+    sw, sh = int(width * 1.2), int(height * 1.2)
+    # Ensure dimensions are divisible by 2 for the encoder
+    sw, sh = (sw // 2) * 2, (sh // 2) * 2
+    
+    # x/y coordinates oscillate slowly over time (t)
+    # This creates a gentle 'breathing' or 'handheld' movement effect
+    x_expr = f"(iw-ow)/2 + (iw/30)*sin(t/1.5)"
+    y_expr = f"(ih-oh)/2 + (ih/30)*cos(t/2.2)"
+    
+    return (
+        f"scale={sw}:{sh}:force_original_aspect_ratio=increase,crop={sw}:{sh},"
+        f"crop={width}:{height}:{x_expr}:{y_expr}"
+    )
+
+
 async def render_video(
     clip_path: str,
     background_paths: list[str],
     output_path: str,
     duration: float | None = None,
     image_duration: float = 5.0,
+    ken_burns: bool = True,
 ) -> str:
     """Render a Quran clip composited over a background.
 
@@ -134,6 +155,7 @@ async def render_video(
         output_path: Where to write the rendered MP4.
         duration: Optional duration limit in seconds (trims output).
         image_duration: Duration to show each image in a slideshow.
+        ken_burns: Whether to apply zoom/pan to images.
 
     Returns:
         Absolute path to the rendered MP4.
@@ -165,13 +187,18 @@ async def render_video(
     # Build filtergraph
     colorkey = _build_colorkey_filter()
     scale = _build_scale_filter(CANVAS_WIDTH, CANVAS_HEIGHT)
+    
+    if is_video_bg or not ken_burns:
+        bg_filter = f"{scale},setsar=1,fps={CANVAS_FPS},format=yuv420p"
+    else:
+        bg_filter = f"{_build_liven_up_filter(CANVAS_WIDTH, CANVAS_HEIGHT)},setsar=1,fps={CANVAS_FPS},format=yuv420p"
 
     # Inputs:
     #   0 = background (image or video)
     #   1 = Quran clip
     # Fix: use yuva420p for foreground to preserve alpha channel from colorkey
     filter_complex = (
-        f"[0:v]{scale},setsar=1,fps={CANVAS_FPS},format=yuv420p[bg];"
+        f"[0:v]{bg_filter}[bg];"
         f"[1:v]{colorkey},{scale},format=yuva420p[fg];"
         f"[bg][fg]overlay=(W-w)/2:(H-h)/2:shortest=1[video]"
     )
@@ -326,8 +353,18 @@ async def render_from_ingredients(
     output_video = str(prod_dir / f"{clip_name}_rendered.mp4")
     output_thumb = str(thumb_dir / f"{clip_name}_thumb.jpg")
 
+    # Determine render settings from config
+    ken_burns = config.get("ken_burns", True)
+    image_duration = config.get("image_duration", 5.0)
+
     # Render using the list of background paths (supports single or slideshow)
-    rendered_path = await render_video(clip_path, background_paths, output_video)
+    rendered_path = await render_video(
+        clip_path, 
+        background_paths, 
+        output_video, 
+        image_duration=image_duration,
+        ken_burns=ken_burns
+    )
 
     # Thumbnail at 2s
     thumb_path = await extract_thumbnail(rendered_path, output_thumb, time_sec=2.0)

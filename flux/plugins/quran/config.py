@@ -19,6 +19,8 @@ DEFAULT_CONFIG: dict = {
         "height": 1920,
         "fps": 30,
     },
+    "ken_burns": True,
+    "image_duration": 5.0,
 }
 
 CONFIG_SCHEMA: dict = {
@@ -57,6 +59,16 @@ CONFIG_SCHEMA: dict = {
             "minimum": 1,
             "maximum": 100,
             "default": 20,
+        },
+        "ken_burns": {
+            "type": "boolean",
+            "default": True,
+            "description": "Apply Ken Burns effect (zoom/pan) to background images",
+        },
+        "image_duration": {
+            "type": "number",
+            "default": 5.0,
+            "description": "Duration to show each background image in seconds",
         },
         "canvas": {
             "type": "object",
