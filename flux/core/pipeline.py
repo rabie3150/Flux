@@ -208,7 +208,29 @@ async def trigger_fetch(db: AsyncSession, pipeline_id: str) -> dict[str, Any]:
         raise ValueError(f"Plugin '{plugin_row.name}' not loaded")
 
     config = json.loads(pipeline.config_json) if pipeline.config_json else {}
-    ingredients = await plugin.fetch(pipeline_id, config)
+    
+    # Pre-fetch known items from DB to pass to the plugin
+    from flux.models import Ingredient
+    stmt = select(Ingredient.source_url, Ingredient.metadata_json).where(
+        Ingredient.pipeline_id == pipeline_id
+    )
+    res = await db.execute(stmt)
+    
+    known_items: set[str] = set()
+    for row in res.all():
+        source_url, meta_json = row
+        if source_url:
+            known_items.add(source_url)
+        if meta_json:
+            try:
+                meta = json.loads(meta_json)
+                # For Quran plugin: we know it uses 'yt_id'
+                if yt_id := meta.get("yt_id"):
+                    known_items.add(yt_id)
+            except Exception:
+                pass
+
+    ingredients = await plugin.fetch(pipeline_id, config, known_items=known_items)
 
     created = 0
     for item in ingredients:
