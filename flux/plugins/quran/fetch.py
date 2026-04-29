@@ -51,7 +51,7 @@ def _extract_shorts_from_channel(channel_url: str, max_clips: int) -> list[dict[
 
     opts = {
         **_YDL_OPTS_BASE,
-        "extract_flat": False,
+        "extract_flat": True,
         "playlistend": max_clips,
         "ignoreerrors": True,
     }
@@ -118,10 +118,10 @@ def _has_audio(file_path: Path) -> bool:
     """Check if the video file has audible audio using ffmpeg volumedetect."""
     try:
         # Run ffmpeg with volumedetect filter
+        # We must not use -v error, because volumedetect prints stats at INFO level.
         result = subprocess.run(
             [
                 "ffmpeg",
-                "-v", "error",
                 "-i", str(file_path),
                 "-af", "volumedetect",
                 "-vn", "-sn", "-dn",
@@ -175,75 +175,71 @@ async def fetch_clips(
     pipeline_id: str,
     source_channels: list[str],
     max_clips: int = 10,
+    known_items: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     """Fetch Quran clips from YouTube channels until max_clips is reached.
 
     Returns a list of ingredient metadata dicts ready for insertion.
     """
     ingredients: list[dict[str, Any]] = []
+    valid_count = 0
     clips_dir = _clips_dir()
     
-    from flux.db import AsyncSessionLocal
-    from flux.models import Ingredient
-    from sqlalchemy import select, and_
+    known = known_items or set()
 
-    async with AsyncSessionLocal() as db:
-        for channel_url in source_channels:
-            if len(ingredients) >= max_clips:
+    for channel_url in source_channels:
+        if valid_count >= max_clips:
+            break
+
+        logger.info("Scanning channel %s for Shorts", channel_url)
+        
+        # Fetch a large flat batch (up to 200) to ensure we find enough new ones
+        videos = _extract_shorts_from_channel(channel_url, 200)
+        
+        for video in videos:
+            if valid_count >= max_clips:
                 break
 
-            logger.info("Scanning channel %s for Shorts", channel_url)
-            
-            # Fetch a larger batch to improve chances of finding new ones
-            videos = _extract_shorts_from_channel(channel_url, max_clips * 3)
-            
-            for video in videos:
-                if len(ingredients) >= max_clips:
-                    break
+            video_id = video.get("id")
+            if not video_id:
+                continue
 
-                video_id = video.get("id")
-                if not video_id:
+            # 1. DB Check: Skip if already known (from core engine injection)
+            if video_id in known:
+                logger.debug("Video %s already known in DB, skipping", video_id)
+                continue
+
+            # 2. Disk Check: Skip if exists
+            file_path = clips_dir / f"{video_id}.mp4"
+            if file_path.exists():
+                logger.debug("Video %s already on disk, skipping", video_id)
+                known.add(video_id)
+                continue
+
+            # 3. Download
+            logger.info("Found new video %s, downloading...", video_id)
+            downloaded_path = _download_video(video_id, video["webpage_url"], clips_dir)
+            if downloaded_path:
+                # 4. Audio Audit
+                if not _has_audio(downloaded_path):
+                    logger.warning("Video %s is silent (no audio stream). Dropping.", video_id)
+                    try:
+                        downloaded_path.unlink()
+                    except OSError as e:
+                        logger.error("Failed to delete silent video %s: %s", downloaded_path, e)
+                    
+                    # Add to ingredients as dropped so it's recorded in DB but file is gone
+                    meta = _build_ingredient_meta(video, downloaded_path)
+                    meta["status"] = "dropped"
+                    meta["file_path"] = None  # Prevent file not found errors
+                    ingredients.append(meta)
+                    known.add(video_id)
                     continue
 
-                # 1. DB Check: Skip if already in database
-                stmt = select(Ingredient).where(
-                    and_(
-                        Ingredient.pipeline_id == pipeline_id,
-                        Ingredient.metadata_json.like(f'%{video_id}%')
-                    )
-                )
-                res = await db.execute(stmt)
-                if res.scalar_one_or_none():
-                    logger.debug("Video %s already in DB, skipping", video_id)
-                    continue
+                ingredients.append(_build_ingredient_meta(video, downloaded_path))
+                valid_count += 1
+                known.add(video_id)
+                logger.info("Added new ingredient: %s", video_id)
 
-                # 2. Disk Check: Skip if exists
-                file_path = clips_dir / f"{video_id}.mp4"
-                if file_path.exists():
-                    logger.debug("Video %s already on disk, skipping", video_id)
-                    continue
-
-                # 3. Download
-                logger.info("Found new video %s, downloading...", video_id)
-                downloaded_path = _download_video(video_id, video["webpage_url"], clips_dir)
-                if downloaded_path:
-                    # 4. Audio Audit
-                    if not _has_audio(downloaded_path):
-                        logger.warning("Video %s is silent (no audio stream). Rejecting.", video_id)
-                        try:
-                            downloaded_path.unlink()
-                        except OSError as e:
-                            logger.error("Failed to delete silent video %s: %s", downloaded_path, e)
-                        
-                        # Add to ingredients as rejected so it's recorded in DB but file is gone
-                        meta = _build_ingredient_meta(video, downloaded_path)
-                        meta["status"] = "rejected"
-                        meta["file_path"] = None  # Prevent file not found errors
-                        ingredients.append(meta)
-                        continue
-
-                    ingredients.append(_build_ingredient_meta(video, downloaded_path))
-                    logger.info("Added new ingredient: %s", video_id)
-
-    logger.info("Fetch complete: %d new clips found for pipeline %s", len(ingredients), pipeline_id)
+    logger.info("Fetch complete: %d valid new clips found for pipeline %s", valid_count, pipeline_id)
     return ingredients
