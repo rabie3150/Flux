@@ -224,6 +224,9 @@ flux/
 - `76b4de0` feat(phase-3): render pipeline — ffmpeg colorkey, overlay, thumbnail, render lock
 - `9e9cf43` fix(render): add lock_timeout param, extract helpers, refactor trigger_render
 - `0090dcd` feat: implement configuration management and cross-platform file locking for render coordination
+- `5940d76` feat(phase-3): complete render pipeline and enhance admin UI (card-based library, streaming API)
+- `565ce99` feat(render): implement robust background animations (Ken Burns panning/zooming)
+- `48ae3d4` fix(render): resolve Windows event loop hangs and libx264 scaling constraints
 
 ---
 
@@ -308,7 +311,7 @@ flux/
 | 0 Foundation | ✅ Complete | — | ✅ Yes | `98c238e` |
 | 1 Core Engine | ✅ Complete | 25 passing | ✅ Yes | `b3f49cd`, `e3ad578` |
 | 2 Quran Fetch | ✅ Complete | 58 passing (incl. 4 integration) | ✅ Yes | `b881c1a` → `1b36eed` |
-| 3 Render | ✅ Complete | 8 integration passing | ✅ Yes | `76b4de0`, `9e9cf43`, `0090dcd` |
+| 3 Render | ✅ Complete | 8 integration passing | ✅ Yes | `76b4de0` → `48ae3d4` |
 | 4 Content ID | ⏳ Not started | — | ❌ No | — |
 | 5 Platform Workers | ⏳ Not started | — | ❌ No | — |
 | 6 Admin Panel | ⏳ Not started | — | ❌ No | — |
