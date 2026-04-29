@@ -1,13 +1,12 @@
 """Gemini AI client for verse identification.
 
 Handles prompt engineering, file uploading (or URL sharing), 
-and key rotation for the Gemini 1.5 API.
+and key rotation for the Gemini 2.0 API.
 """
 
 from __future__ import annotations
 
 import json
-import os
 from typing import Any
 
 import httpx
@@ -15,7 +14,7 @@ from flux.logger import get_logger
 
 logger = get_logger(__name__)
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 class GeminiAIClient:
     """Async client for Gemini API with key rotation."""
