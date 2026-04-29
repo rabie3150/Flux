@@ -136,35 +136,59 @@ async def fetch_clips(
     source_channels: list[str],
     max_clips: int = 10,
 ) -> list[dict[str, Any]]:
-    """Fetch Quran clips from YouTube channels.
+    """Fetch Quran clips from YouTube channels until max_clips is reached.
 
     Returns a list of ingredient metadata dicts ready for insertion.
     """
     ingredients: list[dict[str, Any]] = []
     clips_dir = _clips_dir()
-    remaining = max_clips
+    
+    from flux.db import AsyncSessionLocal
+    from flux.models import Ingredient
+    from sqlalchemy import select, and_
 
-    for channel_url in source_channels:
-        if remaining <= 0:
-            break
-
-        logger.info("Scanning channel %s for Shorts", channel_url)
-        videos = _extract_shorts_from_channel(channel_url, remaining)
-        logger.info("Found %d candidate Shorts from %s", len(videos), channel_url)
-
-        for video in videos:
-            if remaining <= 0:
+    async with AsyncSessionLocal() as db:
+        for channel_url in source_channels:
+            if len(ingredients) >= max_clips:
                 break
 
-            video_id = video.get("id")
-            if not video_id:
-                continue
+            logger.info("Scanning channel %s for Shorts", channel_url)
+            
+            # Fetch a larger batch to improve chances of finding new ones
+            videos = _extract_shorts_from_channel(channel_url, max_clips * 3)
+            
+            for video in videos:
+                if len(ingredients) >= max_clips:
+                    break
 
-            video_url = video["webpage_url"]
-            file_path = _download_video(video_id, video_url, clips_dir)
-            if file_path:
-                ingredients.append(_build_ingredient_meta(video, file_path))
-                remaining -= 1
+                video_id = video.get("id")
+                if not video_id:
+                    continue
 
-    logger.info("Fetch complete: %d new clips for pipeline %s", len(ingredients), pipeline_id)
+                # 1. DB Check: Skip if already in database
+                stmt = select(Ingredient).where(
+                    and_(
+                        Ingredient.pipeline_id == pipeline_id,
+                        Ingredient.metadata_json.like(f'%{video_id}%')
+                    )
+                )
+                res = await db.execute(stmt)
+                if res.scalar_one_or_none():
+                    logger.debug("Video %s already in DB, skipping", video_id)
+                    continue
+
+                # 2. Disk Check: Skip if exists
+                file_path = clips_dir / f"{video_id}.mp4"
+                if file_path.exists():
+                    logger.debug("Video %s already on disk, skipping", video_id)
+                    continue
+
+                # 3. Download
+                logger.info("Found new video %s, downloading...", video_id)
+                downloaded_path = _download_video(video_id, video["webpage_url"], clips_dir)
+                if downloaded_path:
+                    ingredients.append(_build_ingredient_meta(video, downloaded_path))
+                    logger.info("Added new ingredient: %s", video_id)
+
+    logger.info("Fetch complete: %d new clips found for pipeline %s", len(ingredients), pipeline_id)
     return ingredients
