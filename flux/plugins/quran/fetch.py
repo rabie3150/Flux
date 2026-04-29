@@ -25,7 +25,7 @@ MAX_SHORT_DURATION = 120
 _YDL_OPTS_BASE: dict[str, Any] = {
     "quiet": True,
     "no_warnings": True,
-    "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+    "format": "best[ext=mp4]/best",
     "merge_output_format": "mp4",
     "writethumbnail": False,
     "writeinfojson": False,
