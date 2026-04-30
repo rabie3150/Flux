@@ -185,7 +185,7 @@ async def test_trigger_render_no_approved_clip(
     )
 
     assert response.status_code == 400
-    assert "No approved quran_clip" in response.json()["detail"]
+    assert "No unused approved quran_clip" in response.json()["detail"]
 
 
 @pytest.mark.anyio

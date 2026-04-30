@@ -2,18 +2,25 @@
 
 from __future__ import annotations
 
+import json
+import random
 from typing import Any
 
+from jinja2 import Template
+from sqlalchemy import select
+
+from flux.db import AsyncSessionLocal
 from flux.logger import get_logger
+from flux.models import Ingredient, ProducedContent
 from flux.plugins.base import ContentPlugin, RenderResult
 
+from .ai import GeminiAIClient
+from .api import VerseService
 from .backgrounds import fetch_backgrounds
 from .config import CONFIG_SCHEMA, DEFAULT_CONFIG
 from .fetch import fetch_clips
-from .identify import identify_from_metadata
+from .identify import _SURAH_NAMES, identify_from_metadata
 from .render import render_from_ingredients
-from .ai import GeminiAIClient
-from .api import VerseService
 
 logger = get_logger(__name__)
 
@@ -49,7 +56,7 @@ class QuranPlugin(ContentPlugin):
         return ["quran_clip", "bg_image", "bg_video"]
 
     async def fetch(
-        self, pipeline_id: str, config: dict[str, Any]
+        self, pipeline_id: str, config: dict[str, Any], known_items: set[str] | None = None
     ) -> list[dict[str, Any]]:
         """Fetch new Quran clips and background images."""
         cfg = _deep_merge(DEFAULT_CONFIG, config)
@@ -61,7 +68,9 @@ class QuranPlugin(ContentPlugin):
         ingredients: list[dict[str, Any]] = []
         if channels:
             try:
-                clips = await fetch_clips(pipeline_id, channels, max_clips=max_clips)
+                clips = await fetch_clips(
+                    pipeline_id, channels, max_clips=max_clips, known_items=known_items
+                )
                 ingredients.extend(clips)
             except Exception as e:
                 logger.error("Clip fetch failed for pipeline %s: %s", pipeline_id, e)
@@ -120,11 +129,6 @@ class QuranPlugin(ContentPlugin):
         """Identify verse reference from rendered content. (Phase 4)"""
         logger.info("QuranPlugin.identify_content called for %s", produced_content_id)
 
-        from flux.db import AsyncSessionLocal
-        from flux.models import ProducedContent, Ingredient
-        from sqlalchemy import select
-        import json
-
         async with AsyncSessionLocal() as db:
             res = await db.execute(select(ProducedContent).where(ProducedContent.id == produced_content_id))
             content = res.scalar_one_or_none()
@@ -145,13 +149,16 @@ class QuranPlugin(ContentPlugin):
             if settings.gemini_api_keys:
                 logger.info("Regex ID incomplete, falling back to Gemini AI...")
                 ai_client = GeminiAIClient(settings.gemini_api_keys)
-                ai_result = await ai_client.identify_verse(video_url=source_url)
+                # Pass both the URL and the description for best accuracy
+                ai_result = await ai_client.identify_verse(
+                    video_url=source_url, 
+                    description=clip_meta.get("description")
+                )
                 if ai_result:
                     if id_result: id_result.update(ai_result)
                     else: id_result = ai_result
 
         if id_result:
-            from .identify import _SURAH_NAMES
             surah_num = id_result.get("surah")
             if surah_num in _SURAH_NAMES:
                 id_result["surah_name"] = _SURAH_NAMES[surah_num]["en"]
@@ -169,11 +176,6 @@ class QuranPlugin(ContentPlugin):
         """Generate caption for a specific platform worker. (Phase 4)"""
         logger.info("QuranPlugin.build_caption called for %s", produced_content_id)
 
-        from flux.db import AsyncSessionLocal
-        from flux.models import ProducedContent
-        from sqlalchemy import select
-        import json
-
         async with AsyncSessionLocal() as db:
             res = await db.execute(select(ProducedContent).where(ProducedContent.id == produced_content_id))
             content = res.scalar_one_or_none()
@@ -186,8 +188,7 @@ class QuranPlugin(ContentPlugin):
 
         if not surah or not ayah: return ""
 
-        verse_service = VerseService()
-        verse_data = await verse_service.get_verse(surah, ayah)
+        verse_data = await VerseService().get_verse(surah, ayah)
         if not verse_data: return ""
 
         cfg = _deep_merge(DEFAULT_CONFIG, config)
@@ -197,14 +198,11 @@ class QuranPlugin(ContentPlugin):
         
         if not template_str: return ""
 
-        import random
         pool = cfg.get("hashtags", [])
         count = min(len(pool), random.randint(3, 5))
-        hashtags = " ".join([f"#{h}" for h in random.sample(pool, count)]) if pool else ""
+        hashtags = " ".join([f"#{h}" for s in random.sample(pool, count)]) if pool else ""
 
-        from jinja2 import Template
-        template = Template(template_str)
-        caption = template.render(
+        caption = Template(template_str).render(
             surah_name=surah_name,
             verse_ref=f"{surah}:{ayah}",
             arabic_text=verse_data.get("arabic", ""),

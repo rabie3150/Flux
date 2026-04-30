@@ -6,7 +6,6 @@ Supports Arabic, English, and transliterated surah names.
 
 from __future__ import annotations
 
-import json
 import re
 from typing import Any
 
@@ -321,17 +320,14 @@ def identify_from_metadata(metadata: dict[str, Any]) -> dict[str, Any] | None:
 
     Checks title, description, and any other text fields.
     """
-    # Primary source: title
-    title = metadata.get("title", "")
-    result = identify_from_title(title)
-    if result:
-        return result
-
-    # Fallback: description if present
-    description = metadata.get("description", "")
-    if description:
-        result = identify_from_title(description)
-        if result:
-            return result
+    # Check potential text sources in priority order
+    sources = ["title", "description"]
+    
+    for field in sources:
+        text = metadata.get(field, "")
+        if text:
+            result = identify_from_title(text)
+            if result:
+                return result
 
     return None

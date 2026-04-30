@@ -14,7 +14,7 @@ from flux.logger import get_logger
 
 logger = get_logger(__name__)
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
 
 class GeminiAIClient:
     """Async client for Gemini API with key rotation."""
@@ -32,23 +32,31 @@ class GeminiAIClient:
         self._current_key_idx = (self._current_key_idx + 1) % len(self.api_keys)
         logger.info("Rotated to Gemini API key index %d", self._current_key_idx)
 
-    async def identify_verse(self, video_url: str | None = None, audio_path: str | None = None) -> dict[str, Any] | None:
-        """Ask Gemini to identify the Quranic verse from a URL or audio file.
+    async def identify_verse(
+        self, 
+        video_url: str | None = None, 
+        audio_path: str | None = None,
+        description: str | None = None
+    ) -> dict[str, Any] | None:
+        """Ask Gemini to identify the Quranic verse from a URL, audio file, or description.
         
         Returns {"surah": int, "ayah": int, "confidence": float} or None.
         """
-        if not video_url and not audio_path:
+        if not video_url and not audio_path and not description:
             return None
 
         # Build prompt
         prompt = (
-            "You are an expert in Quranic studies. Identify the Quranic verse in this video/audio. "
+            "You are an expert in Quranic studies. Identify the Quranic verse reference. "
             "Return ONLY a JSON object with 'surah' (number) and 'ayah' (number). "
             "If it contains multiple verses, return the first one. "
             "If you are unsure, return null. "
             "Example: {\"surah\": 2, \"ayah\": 255}"
         )
 
+        if description:
+            prompt += f"\n\nVideo Description from YouTube: {description}"
+            
         if video_url:
             prompt += f"\n\nVideo URL: {video_url}"
         

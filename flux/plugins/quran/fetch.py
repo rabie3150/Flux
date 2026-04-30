@@ -87,14 +87,14 @@ def _extract_shorts_from_channel(channel_url: str, max_clips: int) -> list[dict[
     return videos
 
 
-def _download_video(video_id: str, video_url: str, output_dir: Path) -> Path | None:
-    """Download a single video to output_dir. Returns file path or None if already downloaded or failed."""
+def _download_video(video_id: str, video_url: str, output_dir: Path) -> tuple[Path | None, dict[str, Any] | None]:
+    """Download a single video to output_dir. Returns (file_path, full_info) or (None, None) if failed/exists."""
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / f"{video_id}.mp4"
 
     if output_path.exists():
         logger.debug("Video %s already downloaded, skipping", video_id)
-        return None
+        return None, None
 
     opts = {
         **_YDL_OPTS_BASE,
@@ -103,15 +103,15 @@ def _download_video(video_id: str, video_url: str, output_dir: Path) -> Path | N
 
     try:
         with yt_dlp.YoutubeDL(opts) as ydl:
-            ydl.download([video_url])
+            info = ydl.extract_info(video_url, download=True)
         logger.info("Downloaded video %s -> %s", video_id, output_path)
-        return output_path
+        return output_path, info
     except (DownloadError, ExtractorError) as e:
         logger.error("yt-dlp failed to download video %s: %s", video_id, e)
-        return None
+        return None, None
     except Exception as e:
         logger.error("Unexpected error downloading video %s: %s", video_id, e)
-        return None
+        return None, None
 
 
 def _has_audio(file_path: Path) -> bool:
@@ -159,11 +159,12 @@ def _build_ingredient_meta(video_info: dict[str, Any], file_path: Path) -> dict[
     return {
         "type": "quran_clip",
         "file_path": str(file_path),
-        "source_url": video_info["webpage_url"],
+        "source_url": video_info.get("webpage_url", ""),
         "metadata": {
-            "yt_id": video_info["id"],
-            "title": video_info["title"],
-            "uploader": video_info["uploader"],
+            "yt_id": video_info.get("id", ""),
+            "title": video_info.get("title", ""),
+            "description": video_info.get("description", ""),
+            "uploader": video_info.get("uploader", ""),
             "channel_url": video_info.get("channel_url", ""),
         },
         "file_size_bytes": file_size,
@@ -218,8 +219,8 @@ async def fetch_clips(
 
             # 3. Download
             logger.info("Found new video %s, downloading...", video_id)
-            downloaded_path = _download_video(video_id, video["webpage_url"], clips_dir)
-            if downloaded_path:
+            downloaded_path, full_info = _download_video(video_id, video["webpage_url"], clips_dir)
+            if downloaded_path and full_info:
                 # 4. Audio Audit
                 if not _has_audio(downloaded_path):
                     logger.warning("Video %s is silent (no audio stream). Dropping.", video_id)
@@ -229,14 +230,14 @@ async def fetch_clips(
                         logger.error("Failed to delete silent video %s: %s", downloaded_path, e)
                     
                     # Add to ingredients as dropped so it's recorded in DB but file is gone
-                    meta = _build_ingredient_meta(video, downloaded_path)
+                    meta = _build_ingredient_meta(full_info, downloaded_path)
                     meta["status"] = "dropped"
                     meta["file_path"] = None  # Prevent file not found errors
                     ingredients.append(meta)
                     known.add(video_id)
                     continue
 
-                ingredients.append(_build_ingredient_meta(video, downloaded_path))
+                ingredients.append(_build_ingredient_meta(full_info, downloaded_path))
                 valid_count += 1
                 known.add(video_id)
                 logger.info("Added new ingredient: %s", video_id)

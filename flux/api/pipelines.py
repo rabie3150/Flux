@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -266,28 +265,13 @@ async def trigger_pipeline(
     elif req.action == "render":
         ingredient_ids = req.ingredient_ids
         if not ingredient_ids:
-            # Auto-select first approved clip + backgrounds
-            from flux.core.ingredients import list_ingredients
-            from flux.models import ProducedContent
-
-            approved = await list_ingredients(
-                db, pipeline_id, status_filter="approved", limit=200
-            )
+            # Auto-select next unused approved items
+            from flux.core.ingredients import get_unused_approved_ingredients
             
-            # Find which ingredients have already been used in produced content
-            stmt = select(ProducedContent.ingredient_ids_json).where(
-                ProducedContent.pipeline_id == pipeline_id
-            )
-            res = await db.execute(stmt)
-            used_ids = set()
-            for row in res.all():
-                try:
-                    used_ids.update(json.loads(row[0]))
-                except Exception:
-                    pass
-
-            clip = next((i for i in approved if i.type == "quran_clip" and i.id not in used_ids), None)
-            bgs = [i for i in approved if i.type in ("bg_image", "bg_video") and i.id not in used_ids]
+            unused = await get_unused_approved_ingredients(db, pipeline_id)
+            
+            clip = next((i for i in unused if i.type == "quran_clip"), None)
+            bgs = [i for i in unused if i.type in ("bg_image", "bg_video")]
             
             if not clip:
                 raise HTTPException(
@@ -295,8 +279,9 @@ async def trigger_pipeline(
                     detail="No unused approved quran_clip found. Approve more clips first.",
                 )
             if not bgs:
-                # If we run out of unused backgrounds, just reuse an existing one
-                bgs = [i for i in approved if i.type in ("bg_image", "bg_video")]
+                # Fallback: if we ran out of new backgrounds, reuse any approved ones
+                from flux.core.ingredients import list_ingredients
+                bgs = await list_ingredients(db, pipeline_id, status_filter="approved", type_filter="bg_image")
                 if not bgs:
                     raise HTTPException(
                         status_code=400,

@@ -123,4 +123,4 @@ async def test_trigger_render_no_ingredients(
         json={"action": "render"},
     )
     assert response.status_code == 400
-    assert "No approved quran_clip" in response.json()["detail"]
+    assert "No unused approved quran_clip" in response.json()["detail"]

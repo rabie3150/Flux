@@ -113,7 +113,7 @@ def setup_logging() -> None:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     console_handler.setFormatter(console_fmt)
-    console_handler.setLevel(logging.DEBUG)
+    console_handler.setLevel(logging.INFO)
     root.addHandler(console_handler)
 
     # File handler — JSON structured, with rotation
@@ -136,9 +136,7 @@ def setup_logging() -> None:
 
     # Reduce noise from third-party libraries
     logging.getLogger("apscheduler").setLevel(logging.WARNING)
-    logging.getLogger("sqlalchemy.engine").setLevel(
-        logging.DEBUG if settings.flux_env == "development" else logging.WARNING
-    )
+    logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("telegram").setLevel(logging.WARNING)
 

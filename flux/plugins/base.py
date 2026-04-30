@@ -52,9 +52,14 @@ class ContentPlugin(ABC):
 
     @abstractmethod
     async def fetch(
-        self, pipeline_id: str, config: dict[str, Any]
+        self, pipeline_id: str, config: dict[str, Any], known_items: set[str] | None = None
     ) -> list[dict[str, Any]]:
         """Fetch new ingredients from external sources.
+
+        Args:
+            pipeline_id: ID of the pipeline being fetched for.
+            config: Pipeline configuration dictionary.
+            known_items: Set of item identifiers (e.g. source URLs or IDs) already in the DB.
 
         Returns list of ingredient metadata dicts. Each dict must contain:
         - type: str — ingredient type

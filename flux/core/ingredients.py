@@ -24,13 +24,20 @@ async def list_ingredients(
     limit: int = 200,
     offset: int = 0,
 ) -> list[Ingredient]:
-    """List ingredients for a pipeline with optional filters."""
+    """List ingredients for a pipeline with optional filters.
+    
+    By default, hides ingredients with status 'dropped' unless explicitly requested.
+    """
     stmt = select(Ingredient).where(Ingredient.pipeline_id == pipeline_id)
 
     if type_filter:
         stmt = stmt.where(Ingredient.type == type_filter)
+        
     if status_filter:
         stmt = stmt.where(Ingredient.status == status_filter)
+    else:
+        # Exclude dropped items from general listings
+        stmt = stmt.where(Ingredient.status != "dropped")
 
     stmt = stmt.order_by(Ingredient.created_at.desc()).limit(limit).offset(offset)
     result = await db.execute(stmt)
@@ -169,6 +176,39 @@ async def delete_ingredients(
             except OSError as e:
                 logger.warning("Failed to delete file %s: %s", ing.file_path, e)
     return count
+
+
+async def get_unused_approved_ingredients(
+    db: AsyncSession,
+    pipeline_id: str,
+) -> list[Ingredient]:
+    """Return all approved ingredients that haven't been used in produced content yet."""
+    from flux.models import ProducedContent
+
+    # 1. Get all approved ingredients for this pipeline
+    stmt = select(Ingredient).where(
+        Ingredient.pipeline_id == pipeline_id,
+        Ingredient.status == "approved"
+    )
+    res = await db.execute(stmt)
+    approved = list(res.scalars().all())
+    
+    # 2. Find which IDs have already been used
+    stmt = select(ProducedContent.ingredient_ids_json).where(
+        ProducedContent.pipeline_id == pipeline_id
+    )
+    res = await db.execute(stmt)
+    used_ids = set()
+    for row in res.all():
+        if row[0]:
+            try:
+                ids = json.loads(row[0])
+                if isinstance(ids, list):
+                    used_ids.update(ids)
+            except Exception as e:
+                logger.warning("Failed to parse ingredient_ids_json for content row: %s", e)
+    # 3. Filter
+    return [i for i in approved if i.id not in used_ids]
 
 
 async def count_ingredients(

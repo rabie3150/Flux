@@ -146,7 +146,7 @@ class Ingredient(Base):
     metadata_json: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, default="pending"
-    )  # pending, approved, rejected
+    )  # pending, approved, rejected, dropped
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime)
     file_size_bytes: Mapped[Optional[int]] = mapped_column(Integer)
     duration_secs: Mapped[Optional[float]] = mapped_column(Float)

@@ -76,13 +76,8 @@ async def sync_plugins_to_db(db: AsyncSession) -> None:
             existing.display_name = instance.display_name
             existing.version = instance.version
             existing.config_schema = json.dumps(instance.get_config_schema())
-            # module_path is tricky to get dynamically here but we can skip it or use __module__
             existing.module_path = instance.__class__.__module__
         else:
-            # Create new record
-            # We use the plugin name as the ID if it's short enough, or just let default _new_id handle it.
-            # However, the user is expecting 'quran_shorts' to be the ID in their curl.
-            # But in the DB, 'id' is String(32). 'quran_shorts' fits.
             new_plugin = Plugin(
                 id=plugin_id,  # Use name as ID for easier manual CURLing/UI usage
                 name=plugin_id,
