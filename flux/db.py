@@ -50,12 +50,37 @@ def _set_sqlite_pragma(dbapi_conn, connection_record) -> None:
     cursor.close()
 
 
+async def _migrate_columns() -> None:
+    """Add columns that may be missing from existing SQLite tables."""
+    from sqlalchemy import text
+
+    async with engine.begin() as conn:
+        # PlatformWorker migrations
+        result = await conn.execute(
+            text("PRAGMA table_info(platform_workers)")
+        )
+        columns = {row[1] for row in result.fetchall()}
+
+        if "connection_strategy" not in columns:
+            await conn.execute(
+                text("ALTER TABLE platform_workers ADD COLUMN connection_strategy VARCHAR(32) NOT NULL DEFAULT 'official'")
+            )
+            logger.info("Migration: added connection_strategy to platform_workers")
+
+        if "third_party_provider" not in columns:
+            await conn.execute(
+                text("ALTER TABLE platform_workers ADD COLUMN third_party_provider VARCHAR(32)")
+            )
+            logger.info("Migration: added third_party_provider to platform_workers")
+
+
 async def init_db() -> None:
     """Create all tables. Call once at application startup."""
     import flux.models  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    await _migrate_columns()
     logger.info("Database tables created/verified")
 
 

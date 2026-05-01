@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from flux.core import workers as worker_service
+from flux.core.publish import publish_for_worker
+from flux.core.scheduler_jobs import refresh_worker_job, remove_worker_job
 from flux.db import get_db
 from flux.logger import get_logger
 from flux.models import PlatformWorker
@@ -26,6 +28,8 @@ router = APIRouter(prefix="/api/workers", tags=["workers"])
 class WorkerCreate(BaseModel):
     platform: str = Field(..., min_length=1, max_length=32)
     display_name: str = Field(..., min_length=1, max_length=128)
+    connection_strategy: str = Field(default="official", max_length=32)
+    third_party_provider: str | None = Field(default=None, max_length=32)
     credentials: dict[str, Any] = Field(default_factory=dict)
     schedule_cron: str | None = Field(default=None, max_length=64)
     caption_template_override: str | None = None
@@ -35,6 +39,8 @@ class WorkerCreate(BaseModel):
 
 class WorkerUpdate(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=128)
+    connection_strategy: str | None = Field(default=None, max_length=32)
+    third_party_provider: str | None = Field(default=None, max_length=32)
     credentials: dict[str, Any] | None = None
     schedule_cron: str | None = Field(default=None, max_length=64)
     caption_template_override: str | None = None
@@ -52,6 +58,8 @@ def _serialize_worker(w: PlatformWorker) -> dict[str, Any]:
         "id": w.id,
         "platform": w.platform,
         "display_name": w.display_name,
+        "connection_strategy": w.connection_strategy,
+        "third_party_provider": w.third_party_provider,
         # credentials_json intentionally omitted — never expose secrets
         "schedule_cron": w.schedule_cron,
         "caption_template_override": w.caption_template_override,
@@ -89,12 +97,15 @@ async def create_worker(
         platform=data.platform,
         display_name=data.display_name,
         credentials=data.credentials,
+        connection_strategy=data.connection_strategy,
+        third_party_provider=data.third_party_provider,
         schedule_cron=data.schedule_cron,
         caption_template_override=data.caption_template_override,
         hashtags=data.hashtags,
         enabled=data.enabled,
     )
     logger.info("Worker created: %s", worker.id)
+    await refresh_worker_job(worker.id)
     return _serialize_worker(worker)
 
 
@@ -123,6 +134,8 @@ async def update_worker(
         worker_id,
         display_name=data.display_name,
         credentials=data.credentials,
+        connection_strategy=data.connection_strategy,
+        third_party_provider=data.third_party_provider,
         schedule_cron=data.schedule_cron,
         caption_template_override=data.caption_template_override,
         hashtags=data.hashtags,
@@ -133,6 +146,7 @@ async def update_worker(
         raise HTTPException(status_code=404, detail="Worker not found")
 
     logger.info("Worker updated: %s", worker_id)
+    await refresh_worker_job(worker_id)
     return _serialize_worker(worker)
 
 
@@ -146,6 +160,26 @@ async def delete_worker(
     if not deleted:
         logger.warning("Worker not found for delete: %s", worker_id)
         raise HTTPException(status_code=404, detail="Worker not found")
-    
+
     logger.info("Worker deleted: %s", worker_id)
+    await remove_worker_job(worker_id)
     return {"deleted": worker_id}
+
+
+@router.post("/{worker_id}/post")
+async def trigger_worker_post(
+    worker_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Manually trigger a post attempt for a worker."""
+    worker = await worker_service.get_worker(db, worker_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    result = await publish_for_worker(worker_id)
+    if not result.get("ok"):
+        raise HTTPException(
+            status_code=500,
+            detail=result.get("error", "Post failed"),
+        )
+    return result

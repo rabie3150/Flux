@@ -97,6 +97,11 @@ class PlatformWorker(Base):
         String(32), nullable=False
     )  # youtube, instagram, tiktok, x
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    connection_strategy: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="official"
+    )  # official, unofficial, third_party
+    third_party_provider: Mapped[Optional[str]] = mapped_column(String(32))
+    # e.g., buffer, hootsuite — only used when strategy is third_party
     credentials_json: Mapped[str] = mapped_column(Text, default="{}")
     schedule_cron: Mapped[Optional[str]] = mapped_column(String(64))
     caption_template_override: Mapped[Optional[str]] = mapped_column(Text)

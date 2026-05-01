@@ -262,19 +262,27 @@ flux/
 
 | Task | Definition of Done |
 |------|-------------------|
-| YouTube upload | Video + thumbnail + caption posted via Data API v3 |
-| TikTok post | Video + caption posted via TikTok for Business API or Creator Portal |
-| Instagram post | Video posted via Instagrapi; session reused; no re-login storm |
-| Deduplication | Same video cannot be posted twice to same platform (DB constraint) |
-| Retry logic | Transient failures retry 3×; permanent failures pause worker |
-| Post log | Every attempt recorded with platform_post_id, URL, error_log |
-| Auto-delete | Local MP4 deleted after all platforms succeed (configurable) |
+| Multi-strategy architecture [x] | Per-platform: official API, unofficial/cookie, third-party (Buffer/Hootsuite). User chooses strategy and fills credentials. |
+| Publisher framework [x] | `PlatformPublisher` base class + factory registry. Stubs for all platforms/strategies. |
+| Publishing orchestrator [x] | Scheduler-driven: pick ready content → build caption → publish → record PostRecord. Retry 3×, pause on permanent failure. |
+| Deduplication [x] | `uq_post_dedup` unique constraint on `(produced_content_id, worker_id)`. Already-posted skipped. |
+| Post log [x] | `PostRecord` tracks status, platform_post_id, URL, caption_used, error_log, attempt_count. |
+| Auto-delete [x] | Local MP4 + thumbnail deleted after all attached workers succeed. Content status → `published`. |
+| Manual trigger [x] | `POST /api/workers/{id}/post` endpoint + UI "Post Now" button. |
+| Scheduler integration [x] | APScheduler cron jobs auto-registered per worker on create/update/delete. |
+| YouTube upload [ ] | Official Data API v3 implementation (stub exists) |
+| TikTok post [ ] | Business API or third-party implementation (stub exists) |
+| Instagram post [ ] | Official Graph API or Instagrapi implementation (stub exists) |
+| X post [ ] | API v2 implementation (stub exists) |
 
-**Validation:** Queue 1 ready video. It posts to YouTube + TikTok. Check YouTube Studio for unlisted video. Check TikTok account. Verify post_records has 2 entries.
+**Validation:** Create a worker with strategy="official". Hit manual trigger. Orchestrator picks ready content, builds caption, calls publisher stub, records PostRecord. Worker paused after 3 failed attempts.
 
 > **⚠️ TikTok API Warning:** TikTok has no official video upload API for regular creator accounts. Options are (1) **TikTok for Business API** (requires business account + app approval), (2) **mobile automation** (brittle, out of scope), or (3) **third-party service** (Buffer/Hootsuite). Telegram stays as the notification/alert channel only.
 
-**Git commit:** `feat: platform workers — youtube, tiktok, instagram, dedup, retry`
+**Status:** 🚧 Architecture complete — platform stubs need real implementations
+
+**Git commits:**
+- (this commit) feat(platform): multi-strategy publisher framework, orchestrator, scheduler integration
 
 ---
 
@@ -323,8 +331,8 @@ flux/
 | 1 Core Engine | ✅ Complete | 25 passing | ✅ Yes | `b3f49cd`, `e3ad578` |
 | 2 Quran Fetch | ✅ Complete | 58 passing (incl. 4 integration) | ✅ Yes | `b881c1a` → `1b36eed` |
 | 3 Render | ✅ Complete | 8 integration passing | ✅ Yes | `76b4de0` → `f1ba755` |
-| 4 Content ID | ✅ Complete | 33 passing | ⚠️ Windows only | `8b65797`, `69fd4b6`, (caption commit) |
-| 5 Platform Workers | ⏳ Not started | — | ❌ No | — |
+| 4 Content ID | ✅ Complete | 33 passing | ⚠️ Windows only | `8b65797`, `69fd4b6`, `449e046` |
+| 5 Platform Workers | 🚧 In Progress | 33 passing | ⚠️ Windows only | (platform commit) |
 | 6 Admin Panel | ⏳ Not started | — | ❌ No | — |
 | 7 Hardening | ⏳ Not started | — | ❌ No | — |
 

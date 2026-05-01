@@ -32,6 +32,8 @@ async def create_worker(
     platform: str,
     display_name: str,
     credentials: dict[str, Any],
+    connection_strategy: str = "official",
+    third_party_provider: str | None = None,
     schedule_cron: str | None = None,
     caption_template_override: str | None = None,
     hashtags: list[str] | None = None,
@@ -41,6 +43,8 @@ async def create_worker(
     worker = PlatformWorker(
         platform=platform,
         display_name=display_name,
+        connection_strategy=connection_strategy,
+        third_party_provider=third_party_provider,
         credentials_json=encrypt_dict(credentials),
         schedule_cron=schedule_cron,
         caption_template_override=caption_template_override,
@@ -66,6 +70,8 @@ async def update_worker(
     worker_id: str,
     display_name: str | None = None,
     credentials: dict[str, Any] | None = None,
+    connection_strategy: str | None = None,
+    third_party_provider: str | None = None,
     schedule_cron: str | None = None,
     caption_template_override: str | None = None,
     hashtags: list[str] | None = None,
@@ -78,6 +84,10 @@ async def update_worker(
 
     if display_name is not None:
         worker.display_name = display_name
+    if connection_strategy is not None:
+        worker.connection_strategy = connection_strategy
+    if third_party_provider is not None:
+        worker.third_party_provider = third_party_provider
     if credentials is not None:
         worker.credentials_json = encrypt_dict(credentials)
     if schedule_cron is not None:

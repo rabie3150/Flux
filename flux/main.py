@@ -92,6 +92,14 @@ async def lifespan(app: FastAPI):
         logger.error("[Flux] Scheduler startup failed: %s", e)
         raise
 
+    try:
+        from flux.core.scheduler_jobs import register_worker_jobs
+        await register_worker_jobs()
+        logger.info("[Flux] Worker jobs registered")
+    except Exception as e:
+        logger.error("[Flux] Worker job registration failed: %s", e)
+        raise
+
     yield
 
     # Shutdown
