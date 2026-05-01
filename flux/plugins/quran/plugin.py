@@ -149,14 +149,18 @@ class QuranPlugin(ContentPlugin):
             if settings.gemini_api_keys:
                 logger.info("Regex ID incomplete, falling back to Gemini AI...")
                 ai_client = GeminiAIClient(settings.gemini_api_keys)
-                # Pass both the URL and the description for best accuracy
+                # Pass both the URL and the description for best accuracy.
+                # Many channels put the verse reference in the title or description.
+                title = clip_meta.get("title", "")
+                description = clip_meta.get("description", "")
+                combined = f"Title: {title}\nDescription: {description}".strip()
                 ai_result = await ai_client.identify_verse(
                     video_url=source_url, 
-                    description=clip_meta.get("description")
+                    description=combined
                 )
                 if ai_result:
-                    if id_result: id_result.update(ai_result)
-                    else: id_result = ai_result
+                    # Replace regex result entirely to avoid stale keys (e.g. wrong verse_key)
+                    id_result = ai_result
 
         if id_result:
             surah_num = id_result.get("surah")

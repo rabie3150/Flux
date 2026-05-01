@@ -275,6 +275,12 @@ def identify_from_title(title: str) -> dict[str, Any] | None:
         ayah_str = match.group(3)
         surah = _resolve_surah_number(en_name or ar_name)
         if surah:
+            # Guard against false positives: single-letter Arabic names
+            # (e.g. "ق" in "قل") match inside words. Require >= 3 chars
+            # or an explicit prefix like "سورة".
+            matched = match.group(0).strip()
+            if len(matched) <= 2 and not any(p in matched for p in ("surah", "chapter", "sura", "سورة")):
+                continue
             ayah = int(ayah_str) if ayah_str else None
             if _validate_verse(surah, ayah):
                 return {

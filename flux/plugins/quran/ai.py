@@ -14,7 +14,7 @@ from flux.logger import get_logger
 
 logger = get_logger(__name__)
 
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent"
 
 class GeminiAIClient:
     """Async client for Gemini API with key rotation."""
@@ -47,10 +47,13 @@ class GeminiAIClient:
 
         # Build prompt
         prompt = (
-            "You are an expert in Quranic studies. Identify the Quranic verse reference. "
+            "You are an expert in Quranic studies. The text below contains a Quranic video title "
+            "and/or description. Identify the exact surah and ayah being recited. "
+            "The text may quote the verse directly (e.g. 'قل هو الله أحد') or name the surah "
+            "(e.g. 'سورة البقرة'). If only the surah is named and no specific ayah is quoted, "
+            "return ayah 1. If multiple verses are quoted, return the first one. "
             "Return ONLY a JSON object with 'surah' (number) and 'ayah' (number). "
-            "If it contains multiple verses, return the first one. "
-            "If you are unsure, return null. "
+            "If you are completely unsure, return null. "
             "Example: {\"surah\": 2, \"ayah\": 255}"
         )
 

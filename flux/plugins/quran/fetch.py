@@ -74,6 +74,7 @@ def _extract_shorts_from_channel(channel_url: str, max_clips: int) -> list[dict[
                 videos.append({
                     "id": entry.get("id"),
                     "title": entry.get("title", ""),
+                    "description": entry.get("description", ""),
                     "uploader": entry.get("uploader", ""),
                     "duration": duration,
                     "webpage_url": entry.get("webpage_url", f"https://youtube.com/shorts/{entry.get('id')}"),
