@@ -324,16 +324,35 @@ async def trigger_render(
                 "reason": "render_lock_busy",
             }
 
+        log_activity(
+            level="info",
+            event_type="render_started",
+            message=f"Acquired render lock. Preparing FFmpeg inputs.",
+            pipeline_id=pipeline_id,
+        )
+
         content = await production_service.create_produced_content(
             db, pipeline_id, ingredient_ids, render_method="video_compose"
         )
 
         try:
+            log_activity(
+                level="info",
+                event_type="render_progress",
+                message=f"Running FFmpeg composition...",
+                pipeline_id=pipeline_id,
+            )
             result = await plugin.render(pipeline_id, ingredient_ids, config)
         except Exception as e:
             logger.exception("Render failed for pipeline %s", pipeline_id)
             err_msg = repr(e)
             await production_service.update_render_failed(db, content.id, err_msg)
+            log_activity(
+                level="error",
+                event_type="render_failed",
+                message=f"Render failed: {err_msg}",
+                pipeline_id=pipeline_id,
+            )
             return {
                 "pipeline_id": pipeline_id,
                 "content_id": content.id,
@@ -346,6 +365,12 @@ async def trigger_render(
             logger.error("Render returned no file for pipeline %s: %s", pipeline_id, error)
             await production_service.update_render_failed(
                 db, content.id, f"Render returned no file: {error}"
+            )
+            log_activity(
+                level="error",
+                event_type="render_failed",
+                message=f"Render missing output: {error}",
+                pipeline_id=pipeline_id,
             )
             return {
                 "pipeline_id": pipeline_id,
@@ -360,7 +385,6 @@ async def trigger_render(
             file_path=result.file_path,
             thumbnail_path=result.thumbnail_path,
             metadata=result.metadata,
-            caption=result.caption,
         )
 
         logger.info(

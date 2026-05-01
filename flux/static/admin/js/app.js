@@ -20,16 +20,13 @@ const state = {
     operationTimer: null,
     operationPoller: null,
 };
-
 const el = {};
-
 document.addEventListener('DOMContentLoaded', () => {
     cacheElements();
     bindShell();
     refreshAll();
     window.setInterval(refreshPassive, 30000);
 });
-
 function cacheElements() {
     el.body = document.body;
     el.view = document.querySelector('#app-view');
@@ -44,7 +41,6 @@ function cacheElements() {
     el.modalEyebrow = document.querySelector('#modal-eyebrow');
     el.modalBody = document.querySelector('#modal-body');
 }
-
 function bindShell() {
     document.querySelectorAll('[data-view]').forEach((button) => {
         button.addEventListener('click', () => setView(button.dataset.view));
@@ -57,7 +53,6 @@ function bindShell() {
     });
     document.addEventListener('keydown', handleGlobalShortcuts);
 }
-
 async function api(path, options = {}) {
     const response = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...options });
     if (!response.ok) {
@@ -67,7 +62,6 @@ async function api(path, options = {}) {
     if (response.status === 204) return null;
     return response.json();
 }
-
 async function optionalApi(path, fallback) {
     try {
         return { ok: true, data: await api(path) };
@@ -75,7 +69,6 @@ async function optionalApi(path, fallback) {
         return { ok: false, data: fallback };
     }
 }
-
 async function refreshAll() {
     try {
         await Promise.all([loadHealth(), loadDashboard(), loadWorkers(), loadActivity(), loadSettings()]);
@@ -88,7 +81,6 @@ async function refreshAll() {
         render();
     }
 }
-
 async function refreshPassive() {
     try {
         await Promise.all([loadHealth(), loadDashboard(), loadActivity()]);
@@ -99,38 +91,30 @@ async function refreshPassive() {
         renderHealth();
     }
 }
-
 async function loadHealth() {
     state.health = await api('/api/health');
 }
-
 async function loadDashboard() {
     state.dashboard = await api('/api/system/dashboard');
 }
-
 async function loadPipelines() {
     state.pipelines = await api('/api/pipelines');
 }
-
 async function loadWorkers() {
     state.workers = await api('/api/workers');
 }
-
 async function loadActivity() {
     const data = await api('/api/system/activity?limit=60');
     state.activity = data.events || [];
 }
-
 async function loadSettings() {
     state.settings = await api('/api/system/settings');
 }
-
 async function loadPosts() {
     const result = await optionalApi('/api/posts?limit=50', []);
     state.backend.posts = result.ok;
     state.posts = Array.isArray(result.data) ? result.data : result.data.posts || [];
 }
-
 async function loadAllPipelineData() {
     const entries = await Promise.all(state.pipelines.map(async (pipeline) => {
         const [stats, ingredients, production, workers] = await Promise.all([
@@ -151,7 +135,6 @@ async function loadAllPipelineData() {
         [...state.selectedIngredients].filter((id) => currentIngredients().some((item) => item.id === id))
     );
 }
-
 async function saveSetting(key, value) {
     await api(`/api/system/settings/${encodeURIComponent(key)}`, {
         method: 'PUT',
@@ -161,14 +144,12 @@ async function saveSetting(key, value) {
     await loadSettings();
     render();
 }
-
 function render() {
     renderChrome();
     renderHealth();
     renderView();
     bindViewEvents();
 }
-
 function renderChrome() {
     const pipeline = selectedPipeline();
     document.querySelectorAll('[data-view]').forEach((button) => {
@@ -179,15 +160,13 @@ function renderChrome() {
     el.topbarActions.innerHTML = `
         <span class="topbar-status"><span class="health-dot ${escapeAttr(state.health.status || 'unknown')}"></span>${state.health.status === 'healthy' ? 'Status: Green' : 'Status: Check'}</span>
         <button class="button ghost" data-action="refresh" ${state.operation ? 'disabled' : ''}>Refresh</button>
-        ${pipeline && state.view === 'pipelines' ? `<button class="button primary" data-action="render-next" ${state.operation ? 'disabled' : ''}>${state.operation?.type === 'render' ? 'Rendering...' : 'Render Next'}</button>` : ''}
+        ${pipeline && state.view === 'pipelines' && state.pipelineTab !== 'production' ? `<button class="button primary" data-action="render-next" ${state.operation ? 'disabled' : ''}>Run Pipeline</button>` : ''}
     `;
 }
-
 function renderHealth() {
     el.healthDot.className = `health-dot ${escapeAttr(state.health.status || 'unknown')}`;
     el.healthLabel.textContent = state.health.status === 'healthy' ? 'Daemon healthy' : 'Health unknown';
 }
-
 function renderView() {
     const templates = {
         dashboard: dashboardTemplate,
@@ -198,9 +177,8 @@ function renderView() {
         plugins: pluginsTemplate,
         activity: activityTemplate,
     };
-    el.view.innerHTML = `${operationTemplate()}${(templates[state.view] || templates.dashboard)()}`;
+    el.view.innerHTML = (templates[state.view] || templates.dashboard)();
 }
-
 function bindViewEvents() {
     el.view.querySelectorAll('[data-view]').forEach((button) => button.addEventListener('click', () => setView(button.dataset.view)));
     el.topbarActions.querySelector('[data-action="refresh"]')?.addEventListener('click', refreshAll);
@@ -222,9 +200,9 @@ function bindViewEvents() {
     el.view.querySelectorAll('[data-detach-pipeline-worker]').forEach((button) => button.addEventListener('click', () => detachPipelineWorker(button.dataset.detachPipelineWorker)));
     el.view.querySelectorAll('[data-save-setting]').forEach((button) => button.addEventListener('click', () => saveSettingFromInput(button.dataset.saveSetting)));
     el.view.querySelector('[data-action="create-worker"]')?.addEventListener('click', openCreateWorkerModal);
+    el.view.querySelectorAll('[data-action="post-now"]').forEach((button) => button.addEventListener('click', () => triggerPostNow(button.dataset.workerId)));
     bindWorkbenchEvents();
 }
-
 function bindWorkbenchEvents() {
     el.view.querySelector('#ingredient-type')?.addEventListener('change', (event) => {
         state.filters.ingredientType = event.target.value;
@@ -265,7 +243,6 @@ function bindWorkbenchEvents() {
     el.view.querySelectorAll('[data-preview-production]').forEach((button) => button.addEventListener('click', () => previewProduction(button.dataset.previewProduction)));
     el.view.querySelectorAll('[data-identify-production]').forEach((button) => button.addEventListener('click', () => openIdentify(button.dataset.identifyProduction)));
 }
-
 function handleIngredientSelection(id, event, forcedChecked = null) {
     const visibleIds = currentIngredients().map((item) => item.id);
     if (event.shiftKey && state.lastSelectedIngredientId && visibleIds.includes(state.lastSelectedIngredientId)) {
@@ -286,18 +263,15 @@ function handleIngredientSelection(id, event, forcedChecked = null) {
     state.lastSelectedIngredientId = id;
     render();
 }
-
 function selectAllIngredients() {
     currentIngredients().forEach((item) => state.selectedIngredients.add(item.id));
     render();
 }
-
 function clearIngredientSelection() {
     state.selectedIngredients.clear();
     state.lastSelectedIngredientId = null;
     render();
 }
-
 function invertIngredientSelection() {
     currentIngredients().forEach((item) => {
         if (state.selectedIngredients.has(item.id)) state.selectedIngredients.delete(item.id);
@@ -305,7 +279,6 @@ function invertIngredientSelection() {
     });
     render();
 }
-
 function handleGlobalShortcuts(event) {
     const typing = ['INPUT', 'SELECT', 'TEXTAREA'].includes(event.target.tagName);
     if (typing || state.view !== 'pipelines' || state.pipelineTab !== 'ingredients') return;
@@ -317,7 +290,6 @@ function handleGlobalShortcuts(event) {
         clearIngredientSelection();
     }
 }
-
 async function createPipeline(event) {
     event.preventDefault();
     const form = new FormData(event.target);
@@ -327,7 +299,6 @@ async function createPipeline(event) {
     toast('Pipeline created.', 'success');
     await refreshAll();
 }
-
 async function saveSelectedPipeline() {
     const pipeline = selectedPipeline();
     if (!pipeline) return;
@@ -335,7 +306,6 @@ async function saveSelectedPipeline() {
     toast('Pipeline saved.', 'success');
     await refreshAll();
 }
-
 async function togglePipeline(id) {
     const pipeline = state.pipelines.find((item) => item.id === id);
     if (!pipeline) return;
@@ -343,7 +313,6 @@ async function togglePipeline(id) {
     toast(!pipeline.enabled ? 'Pipeline resumed.' : 'Pipeline paused.', 'success');
     await refreshAll();
 }
-
 async function deletePipeline(id) {
     const pipeline = state.pipelines.find((item) => item.id === id);
     if (!pipeline || !window.confirm(`Delete ${pipeline.name} and all related data?`)) return;
@@ -351,7 +320,6 @@ async function deletePipeline(id) {
     if (state.selectedPipelineId === id) state.selectedPipelineId = null;
     await refreshAll();
 }
-
 const WORKER_CREDENTIAL_SCHEMAS = {
     youtube: {
         official: [
@@ -402,9 +370,7 @@ const WORKER_CREDENTIAL_SCHEMAS = {
         ],
     },
 };
-
 const THIRD_PARTY_PROVIDERS = ['buffer', 'hootsuite', 'socialpilot'];
-
 function credentialFieldsHtml(platform, strategy) {
     const schema = WORKER_CREDENTIAL_SCHEMAS[platform]?.[strategy] || [];
     return schema.map((field) => {
@@ -414,7 +380,6 @@ function credentialFieldsHtml(platform, strategy) {
         return `<label><span>${escapeHtml(field.label)}</span><input name="cred_${field.name}" type="${escapeAttr(field.type)}" placeholder="${escapeAttr(field.label)}"></label>`;
     }).join('');
 }
-
 function openCreateWorkerModal() {
     el.modalTitle.textContent = 'Connect Worker';
     el.modalEyebrow.textContent = 'Platform Publisher';
@@ -449,58 +414,47 @@ function openCreateWorkerModal() {
             <button class="button primary" type="submit">Create Worker</button>
         </form>`;
     el.modal.classList.remove('hidden');
-
     document.querySelector('#create-worker-form').addEventListener('submit', createWorker);
-
     const platformSelect = document.querySelector('#worker-platform');
     const strategySelect = document.querySelector('#worker-strategy');
     const providerDiv = document.querySelector('#third-party-provider');
     const credContainer = document.querySelector('#credential-fields');
-
     function refreshFields() {
         const platform = platformSelect.value;
         const strategy = strategySelect.value;
         const schema = WORKER_CREDENTIAL_SCHEMAS[platform] || {};
-
         // Hide/show unofficial option depending on platform support
         Array.from(strategySelect.options).forEach((opt) => {
             if (opt.value === 'unofficial') {
                 opt.style.display = schema.unofficial ? '' : 'none';
             }
         });
-
         // If current platform doesn't support unofficial, switch to official
         if (strategy === 'unofficial' && !schema.unofficial) {
             strategySelect.value = 'official';
         }
-
         const effectiveStrategy = strategySelect.value;
         providerDiv.classList.toggle('hidden', effectiveStrategy !== 'third_party');
         credContainer.innerHTML = credentialFieldsHtml(platform, effectiveStrategy);
     }
-
     platformSelect.addEventListener('change', refreshFields);
     strategySelect.addEventListener('change', refreshFields);
     refreshFields();
 }
-
 async function createWorker(event) {
     event.preventDefault();
     const form = new FormData(event.target);
     const displayName = String(form.get('display_name') || '').trim();
     if (!displayName) return toast('Worker display name is required.', 'error');
-
     const platform = form.get('platform');
     const strategy = form.get('connection_strategy');
     const credentials = {};
-
     // Gather credential fields prefixed with cred_
     for (const [key, value] of form.entries()) {
         if (key.startsWith('cred_')) {
             credentials[key.slice(5)] = String(value || '').trim();
         }
     }
-
     const payload = {
         platform,
         display_name: displayName,
@@ -510,15 +464,31 @@ async function createWorker(event) {
         hashtags: String(form.get('hashtags') || '').split(',').map((s) => s.trim()).filter(Boolean),
         enabled: true,
     };
-
     if (strategy === 'third_party') {
         payload.third_party_provider = form.get('third_party_provider');
     }
-
     await api('/api/workers', { method: 'POST', body: JSON.stringify(payload) });
     closeModal();
     toast('Worker created.', 'success');
     await refreshAll();
+}
+async function triggerPostNow(workerId) {
+    if (!workerId) return;
+    if (state.operation) return toast('Another backend operation is already running.', 'error');
+    const worker = state.workers.find((w) => w.id === workerId);
+    const label = worker ? `Posting to ${worker.display_name}` : 'Posting now';
+    startOperation('post', { id: workerId, name: worker?.display_name || 'Worker' }, label, [
+        'Building platform-specific caption',
+        'Uploading video to platform',
+        'Recording post result',
+    ]);
+    try {
+        const result = await api(`/api/workers/${workerId}/post`, { method: 'POST' });
+        await loadAllPipelineData();
+        finishOperation(result.url ? `Posted: ${result.url}` : 'Post completed.', 'success');
+    } catch (error) {
+        finishOperation(error.message, 'error');
+    }
 }
 
 async function toggleWorker(id) {
@@ -528,7 +498,6 @@ async function toggleWorker(id) {
     toast(!worker.enabled ? 'Worker resumed.' : 'Worker paused.', 'success');
     await refreshAll();
 }
-
 async function deleteWorker(id) {
     const worker = state.workers.find((item) => item.id === id);
     if (!worker || !window.confirm(`Delete ${worker.display_name}?`)) return;
@@ -536,7 +505,6 @@ async function deleteWorker(id) {
     if (state.selectedWorkerId === id) state.selectedWorkerId = null;
     await refreshAll();
 }
-
 async function attachWorker(pipelineId) {
     const worker = selectedWorker();
     if (!worker) return;
@@ -544,7 +512,6 @@ async function attachWorker(pipelineId) {
     toast('Worker attached.', 'success');
     await refreshAll();
 }
-
 async function detachWorker(pipelineId) {
     const worker = selectedWorker();
     if (!worker) return;
@@ -552,7 +519,6 @@ async function detachWorker(pipelineId) {
     toast('Worker detached.', 'success');
     await refreshAll();
 }
-
 async function attachPipelineWorker(workerId) {
     const pipeline = selectedPipeline();
     if (!pipeline) return;
@@ -560,7 +526,6 @@ async function attachPipelineWorker(workerId) {
     toast('Worker attached.', 'success');
     await refreshAll();
 }
-
 async function detachPipelineWorker(workerId) {
     const pipeline = selectedPipeline();
     if (!pipeline) return;
@@ -568,7 +533,6 @@ async function detachPipelineWorker(workerId) {
     toast('Worker detached.', 'success');
     await refreshAll();
 }
-
 async function triggerFetch() {
     const pipeline = selectedPipeline();
     if (!pipeline) return;
@@ -587,7 +551,6 @@ async function triggerFetch() {
         finishOperation(error.message, 'error');
     }
 }
-
 async function triggerRender() {
     const pipeline = selectedPipeline();
     if (!pipeline) return;
@@ -606,7 +569,6 @@ async function triggerRender() {
         finishOperation(error.message, 'error');
     }
 }
-
 function startOperation(type, pipeline, label, steps) {
     if (state.operation) return;
     state.operation = {
@@ -637,7 +599,6 @@ function startOperation(type, pipeline, label, steps) {
     }, 5000);
     render();
 }
-
 function finishOperation(message, type) {
     clearOperationTimers();
     const elapsed = state.operation?.elapsed || 0;
@@ -645,23 +606,19 @@ function finishOperation(message, type) {
     toast(`${message} (${formatDuration(elapsed)})`, type);
     render();
 }
-
 function clearOperationTimers() {
     if (state.operationTimer) window.clearInterval(state.operationTimer);
     if (state.operationPoller) window.clearInterval(state.operationPoller);
     state.operationTimer = null;
     state.operationPoller = null;
 }
-
 async function bulkApprove() {
     await bulkIngredientAction('approve', 'Approved');
 }
-
 async function bulkReject() {
     if (state.selectedIngredients.size && !window.confirm(`Reject ${state.selectedIngredients.size} ingredients?`)) return;
     await bulkIngredientAction('reject', 'Rejected');
 }
-
 async function bulkIngredientAction(action, label) {
     const pipeline = selectedPipeline();
     const ids = [...state.selectedIngredients];
@@ -672,37 +629,31 @@ async function bulkIngredientAction(action, label) {
     await loadAllPipelineData();
     render();
 }
-
 function setView(view) {
     state.view = view;
     el.body.classList.remove('nav-open');
     render();
 }
-
 function openPipeline(id) {
     state.selectedPipelineId = id;
     state.view = 'pipelines';
     state.pipelineTab = 'overview';
     render();
 }
-
 function openWorker(id) {
     state.selectedWorkerId = id;
     state.view = 'workers';
     state.workerTab = 'overview';
     render();
 }
-
 function setPipelineTab(tab) {
     state.pipelineTab = tab;
     render();
 }
-
 function setWorkerTab(tab) {
     state.workerTab = tab;
     render();
 }
-
 function openAttention(target) {
     if (target === 'workers') return setView('workers');
     if (!selectedPipeline() && state.pipelines[0]) state.selectedPipelineId = state.pipelines[0].id;
@@ -710,20 +661,17 @@ function openAttention(target) {
     state.pipelineTab = target === 'ingredients' ? 'ingredients' : 'production';
     render();
 }
-
 function saveSettingFromInput(key) {
     const input = el.view.querySelector(`[data-setting-input="${key}"]`);
     const raw = input?.type === 'checkbox' ? input.checked : input?.value;
     const value = input?.type === 'number' ? Number(raw) : raw;
     saveSetting(key, value);
 }
-
 function previewIngredient(id) {
     const item = currentIngredients().find((ingredient) => ingredient.id === id);
     if (!item) return;
     openMediaModal({ title: prettyType(item.type), eyebrow: item.status, kind: isVideo(item) ? 'video' : 'image', src: previewUrl(item) });
 }
-
 function previewProduction(id) {
     const item = currentProduction().find((content) => content.id === id);
     const pipeline = selectedPipeline();
@@ -736,7 +684,6 @@ function previewProduction(id) {
         detail: verseTextBlock(item),
     });
 }
-
 function openIdentify(id) {
     const item = currentProduction().find((content) => content.id === id);
     if (!item) return;
@@ -753,7 +700,6 @@ function openIdentify(id) {
     el.modal.classList.remove('hidden');
     document.querySelector('#identify-form').addEventListener('submit', (event) => manualIdentify(event, id));
 }
-
 async function manualIdentify(event, id) {
     event.preventDefault();
     const pipeline = selectedPipeline();
@@ -769,7 +715,6 @@ async function manualIdentify(event, id) {
     await loadAllPipelineData();
     render();
 }
-
 function openMediaModal({ title, eyebrow, kind, src, detail = '' }) {
     el.modalTitle.textContent = title;
     el.modalEyebrow.textContent = eyebrow;
@@ -778,49 +723,39 @@ function openMediaModal({ title, eyebrow, kind, src, detail = '' }) {
         : `<img src="${escapeAttr(src)}" alt="${escapeAttr(title)}">${detail}`;
     el.modal.classList.remove('hidden');
 }
-
 function closeModal() {
     el.modal.classList.add('hidden');
     el.modalBody.innerHTML = '';
 }
-
 function selectedPipeline() {
     return state.pipelines.find((pipeline) => pipeline.id === state.selectedPipelineId) || null;
 }
-
 function selectedWorker() {
     return state.workers.find((worker) => worker.id === state.selectedWorkerId) || null;
 }
-
 function currentData() {
     return state.pipelineData[state.selectedPipelineId] || { stats: {}, ingredients: [], production: [], workers: [] };
 }
-
 function currentIngredients() {
     return currentData().ingredients.filter((item) => {
         return (!state.filters.ingredientType || item.type === state.filters.ingredientType)
             && (!state.filters.ingredientStatus || item.status === state.filters.ingredientStatus);
     });
 }
-
 function currentProduction() {
     return currentData().production.filter((item) => !state.filters.productionStatus || item.status === state.filters.productionStatus);
 }
-
 function allIngredients() {
     return Object.values(state.pipelineData).flatMap((data) => data.ingredients || []);
 }
-
 function allProduction() {
     return Object.values(state.pipelineData).flatMap((data) => data.production || []);
 }
-
 function pluginInventory() {
     const names = new Set(['quran_shorts']);
     state.pipelines.forEach((pipeline) => names.add(pipeline.plugin_id));
     return [...names].map((name) => ({ name, display_name: name === 'quran_shorts' ? 'Quran Shorts' : name, enabled: true, api_version: '1' }));
 }
-
 function pageTitle() {
     const pipeline = selectedPipeline();
     if (pipeline && state.view === 'pipelines') return pipeline.name;
@@ -834,29 +769,27 @@ function pageTitle() {
         activity: 'Activity Log',
     }[state.view] || 'Flux';
 }
-
 function isVideo(item) {
     return /\.(mp4|mov|webm)$/i.test(item.file_path || '');
 }
-
 function isImage(item) {
     return /\.(jpg|jpeg|png|webp)$/i.test(item.file_path || '');
 }
-
 function previewUrl(item) {
     return `/api/pipelines/${item.pipeline_id}/ingredients/${item.id}/preview`;
 }
-
 function formatDate(value) {
     if (!value) return '-';
     return new Date(value).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
-
+function shortDate(value) {
+    if (!value) return '-';
+    return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
 function formatDuration(seconds) {
     if (seconds < 60) return `${seconds}s`;
     return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
-
 function toast(message, type = 'success') {
     const item = document.createElement('div');
     item.className = `toast ${type}`;
@@ -864,11 +797,9 @@ function toast(message, type = 'success') {
     el.toastStack.appendChild(item);
     window.setTimeout(() => item.remove(), 4200);
 }
-
 function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
 }
-
 function escapeAttr(value) {
     return escapeHtml(value).replace(/`/g, '&#96;');
 }

@@ -27,8 +27,8 @@ function dashboardTemplate() {
 function operationTemplate() {
     if (!state.operation) return '';
     const op = state.operation;
-    const activeIndex = op.steps.length ? op.pulse % op.steps.length : 0;
     const latestActivity = state.activity && state.activity.length > 0 ? state.activity[0] : null;
+    const isActivityRelevant = latestActivity && new Date(latestActivity.timestamp).getTime() >= op.startedAt - 5000; // 5s buffer
     
     return `
         <section class="operation-bar">
@@ -39,7 +39,7 @@ function operationTemplate() {
                 <span class="timer">${formatDuration(op.elapsed)}</span>
             </div>
             <div class="operation-status">
-                ${latestActivity ? escapeHtml(latestActivity.message) : escapeHtml(op.steps[activeIndex])}
+                ${isActivityRelevant ? escapeHtml(latestActivity.message) : 'Processing...'}
             </div>
         </section>`;
 }
@@ -63,12 +63,13 @@ function workbenchTemplate() {
                 <div><p class="eyebrow">Pipelines / ${escapeHtml(pipeline.plugin_id)}</p><h2>${escapeHtml(pipeline.name)} ${statusPill(pipeline.enabled ? 'Active' : 'Paused', pipeline.enabled ? 'ok' : 'off')}</h2></div>
                 <div class="card-actions">
                     <button class="button ghost" data-toggle-pipeline="${pipeline.id}">${pipeline.enabled ? 'Pause' : 'Resume'}</button>
-                    <button class="button primary" data-action="render-next" ${state.operation ? 'disabled' : ''}>${state.operation?.type === 'render' ? 'Rendering...' : 'Run Pipeline'}</button>
+                    ${state.pipelineTab === 'production' ? '' : `<button class="button primary" data-action="render-next" ${state.operation ? 'disabled' : ''}>Run Pipeline</button>`}
                 </div>
             </div>
             <div class="workbench-tabs">
                 <div class="segmented">${['overview', 'ingredients', 'production', 'workers', 'settings'].map((tab) => tabButton(tab, state.pipelineTab, 'data-pipeline-tab')).join('')}</div>
             </div>
+            ${state.operation?.pipelineId === pipeline.id ? operationTemplate() : ''}
             ${state.pipelineTab === 'overview' ? pipelineOverviewTemplate() : ''}
             ${state.pipelineTab === 'ingredients' ? ingredientsTemplate() : ''}
             ${state.pipelineTab === 'production' ? productionTemplate() : ''}
@@ -127,7 +128,7 @@ function productionTemplate() {
     const items = currentProduction();
     const failed = items.filter((item) => item.status === 'failed').length;
     return `
-        <div class="metric-row compact-metrics">
+        <div class="production-stats">
             ${metric('Awaiting Post', items.filter((item) => item.status === 'ready').length)}
             ${metric('Rendered Today', items.filter((item) => item.status === 'rendered' || item.status === 'ready').length)}
             ${metric('Failed Jobs', failed)}
@@ -170,7 +171,7 @@ function workersTemplate() {
         <section class="page-grid">
             <section class="view-hero span-12">
                 <div><h2>Workers</h2><p>Manage your connected platform publishers.</p></div>
-                <button class="button primary">+ Connect Worker</button>
+                <button class="button primary" data-action="create-worker">+ Connect Worker</button>
             </section>
             <section class="span-12">
                 <div class="worker-grid worker-grid-wide">${state.workers.length ? state.workers.map(workerCard).join('') : emptyState('No platform workers configured.', true)}</div>
@@ -268,10 +269,10 @@ function ingredientCard(item) {
 
 function productionRow(item) {
     return `<tr>
-        <td>${statusPill(item.status, item.status)}</td>
+        <td class="status-cell">${statusPill(statusLabel(item.status), item.status)}</td>
         <td class="verse-cell">${productionVerseSummary(item)}</td>
-        <td class="rendered-cell">${formatDate(item.rendered_at)}</td>
-        <td class="table-actions icon-actions"><button class="button compact table-icon" title="Preview" aria-label="Preview production item" data-preview-production="${item.id}">▶</button><button class="button compact ghost table-icon" title="Assign verse" aria-label="Assign verse" data-identify-production="${item.id}">✎</button></td>
+        <td class="rendered-cell" title="${escapeAttr(formatDate(item.rendered_at))}">${shortDate(item.rendered_at)}</td>
+        <td class="table-actions icon-actions"><button class="button compact table-icon" title="Preview" aria-label="Preview production item" data-preview-production="${item.id}">&#9654;</button><button class="button compact ghost table-icon" title="Assign verse" aria-label="Assign verse" data-identify-production="${item.id}">#</button></td>
     </tr>`;
 }
 
@@ -285,7 +286,12 @@ function activityList(events) {
 }
 
 function workerOverview(worker) {
-    return `<div class="overview-grid">${metric('Platform', platformLabel(worker.platform), 'soft')}${metric('Status', worker.enabled ? 'Active' : 'Paused', 'soft')}${metric('Last post', formatDate(worker.last_posted_at), 'soft')}${metric('Last error', worker.last_error_message || 'None', 'soft')}</div>`;
+    const strategyLabel = {
+        official: 'Official API',
+        unofficial: 'Unofficial',
+        third_party: `Third-party (${worker.third_party_provider || 'unknown'})`,
+    }[worker.connection_strategy] || worker.connection_strategy;
+    return `<div class="overview-grid">${metric('Platform', platformLabel(worker.platform), 'soft')}${metric('Strategy', strategyLabel, 'soft')}${metric('Status', worker.enabled ? 'Active' : 'Paused', 'soft')}${metric('Last post', formatDate(worker.last_posted_at), 'soft')}${metric('Last error', worker.last_error_message || 'None', 'soft')}<div class="span-all" style="margin-top:0.5rem;"><button class="button primary" data-action="post-now" data-worker-id="${escapeAttr(worker.id)}">Post Now</button></div></div>`;
 }
 
 function workerSchedule(worker) {
@@ -412,13 +418,28 @@ function productionVerseSummary(item) {
     const surahName = meta.surah_name || detected.surah_name || 'Awaiting identification';
     const arabic = verses.find((verse) => verse.arabic)?.arabic || detected.arabic || meta.arabic || meta.arabic_text || '';
     const refs = verses.length ? verses.map((verse) => verse.ref).filter(Boolean) : (detected.ref ? [detected.ref] : []);
-    const visibleRefs = refs.slice(0, 4).map((ref) => `<span class="verse-chip">${escapeHtml(ref)}</span>`).join('');
-    const more = refs.length > 4 ? `<span class="verse-chip muted">+${refs.length - 4}</span>` : '';
+    const refLabel = refs.length > 1 ? `${refs.length} ayat: ${refs.slice(0, 4).join(' / ')}${refs.length > 4 ? ` / +${refs.length - 4}` : ''}` : refs[0] || '';
     return `<div class="verse-summary">
         <div class="verse-head"><strong>${verseLabel(item)}</strong><small>${escapeHtml(surahName)}</small>${meta.manual_override ? '<span class="mini-pill">Manual</span>' : ''}</div>
-        ${refs.length ? `<div class="verse-chip-row">${visibleRefs}${more}</div>` : ''}
+        ${refLabel ? `<small class="verse-ref-list">${escapeHtml(refLabel)}</small>` : ''}
         ${arabic ? `<p class="verse-preview" dir="rtl" lang="ar">${escapeHtml(arabic)}</p>` : '<small class="verse-muted">No detected verse text cached yet.</small>'}
     </div>`;
+}
+
+function statusLabel(status) {
+    return {
+        verse_unknown: 'Needs verse',
+        ready: 'Ready',
+        rendered: 'Rendered',
+        rendering: 'Rendering',
+        failed: 'Failed',
+        pending: 'Pending',
+        approved: 'Approved',
+        rejected: 'Rejected',
+        published: 'Published',
+        ok: 'Active',
+        off: 'Off'
+    }[status] || titleCase(String(status || 'unknown').replaceAll('_', ' '));
 }
 
 function verseTextBlock(item) {
