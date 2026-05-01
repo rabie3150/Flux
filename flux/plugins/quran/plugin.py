@@ -117,8 +117,8 @@ class QuranPlugin(ContentPlugin):
                 metadata=result["metadata"],
             )
         except Exception as e:
-            logger.error("Render failed: %s", e)
-            return RenderResult(file_path=None, caption="", metadata={"error": str(e)})
+            logger.error("Render failed: %s", repr(e))
+            return RenderResult(file_path=None, caption="", metadata={"error": repr(e)})
 
     async def identify_content(
         self,

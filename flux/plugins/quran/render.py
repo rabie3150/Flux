@@ -149,6 +149,27 @@ async def _probe_duration(path: str) -> float:
         )
         stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30.0)
         return float(stdout.decode("utf-8", errors="replace").strip())
+    except NotImplementedError:
+        logger.warning("asyncio subprocess not supported; using sync fallback for ffprobe.")
+        import subprocess
+
+        def _sync_probe():
+            p = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30.0,
+            )
+            return p.stdout.strip()
+
+        try:
+            stdout_text = await asyncio.to_thread(_sync_probe)
+            return float(stdout_text)
+        except (ValueError, TypeError, subprocess.TimeoutExpired, OSError) as exc:
+            logger.warning("Sync ffprobe fallback failed for %s: %s", path, exc)
+            return 30.0
     except (ValueError, TypeError, asyncio.TimeoutError, OSError) as exc:
         logger.warning("Failed to probe duration for %s: %s", path, exc)
         return 30.0
@@ -167,6 +188,7 @@ async def render_video(
     image_duration: float = 5.0,
     ken_burns: bool = True,
     timing_set: list[float] | None = None,
+    text_shadow: str = "soft",
 ) -> str:
     """Render a Quran clip composited over a background.
 
@@ -179,6 +201,9 @@ async def render_video(
         ken_burns: Whether to apply slow pan/zoom to images.
         timing_set: Optional list of per-image durations.  Cycled as
             needed to cover the clip length.
+        text_shadow: Contrast helper for white text on bright
+            backgrounds.  One of ``"none"``, ``"hard"``, ``"soft"``,
+            ``"center_strip"``, ``"vignette"``.  Default ``"soft"``.
 
     Returns:
         Absolute path to the rendered MP4.
@@ -211,6 +236,7 @@ async def render_video(
         image_duration=image_duration,
         ken_burns=ken_burns,
         timing_set=timing_set,
+        text_shadow=text_shadow,
     )
 
     args = input_args + [
@@ -363,6 +389,8 @@ async def render_from_ingredients(
         except (ValueError, TypeError):
             logger.warning("Invalid duration in config: %s", raw_duration)
 
+    text_shadow = production_cfg.get("text_shadow", config.get("text_shadow", "soft"))
+
     rendered_path = await render_video(
         clip_path,
         backgrounds,
@@ -371,6 +399,7 @@ async def render_from_ingredients(
         image_duration=float(image_duration),
         ken_burns=bool(ken_burns),
         timing_set=timing_set,
+        text_shadow=str(text_shadow),
     )
 
     thumb_path = await extract_thumbnail(rendered_path, output_thumb, time_sec=2.0)
@@ -390,5 +419,6 @@ async def render_from_ingredients(
             },
             "ken_burns": ken_burns,
             "timing_set": timing_set,
+            "text_shadow": text_shadow,
         },
     }

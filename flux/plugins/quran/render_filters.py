@@ -70,6 +70,7 @@ def build_liven_up_filter(
     *,
     speed: float = 1.0,
     zoom_pct: float = 25.0,
+    phase_offset: float = 0.0,
 ) -> str:
     """Ken Burns-style slow pan + zoom using ``scale`` + ``crop``.
 
@@ -79,6 +80,9 @@ def build_liven_up_filter(
 
     ``zoom_pct`` controls how much the image is scaled up before
     cropping (e.g. ``25`` means 1.25×).
+
+    ``phase_offset`` (radians) shifts the starting phase so multiple
+    slideshow images don't move in lock-step.
 
     The ``crop`` coordinates are wrapped with ``trunc()`` so FFmpeg
     never receives a fractional pixel value.
@@ -92,8 +96,8 @@ def build_liven_up_filter(
     sw, sh = _even(width * scale), _even(height * scale)
 
     # trunc() guarantees integer coordinates for the crop filter
-    x_expr = f"trunc((iw-ow)/2+(iw/12)*sin(t*{0.18 * speed}))"
-    y_expr = f"trunc((ih-oh)/2+(ih/16)*cos(t*{0.12 * speed}))"
+    x_expr = f"trunc((iw-ow)/2+(iw/12)*sin(t*{0.18 * speed}+{phase_offset}))"
+    y_expr = f"trunc((ih-oh)/2+(ih/16)*cos(t*{0.12 * speed}+{phase_offset}))"
 
     return (
         f"scale={sw}:{sh}:force_original_aspect_ratio=increase,"

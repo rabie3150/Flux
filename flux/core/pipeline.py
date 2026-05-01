@@ -332,12 +332,13 @@ async def trigger_render(
             result = await plugin.render(pipeline_id, ingredient_ids, config)
         except Exception as e:
             logger.exception("Render failed for pipeline %s", pipeline_id)
-            await production_service.update_render_failed(db, content.id, str(e))
+            err_msg = repr(e)
+            await production_service.update_render_failed(db, content.id, err_msg)
             return {
                 "pipeline_id": pipeline_id,
                 "content_id": content.id,
                 "status": "failed",
-                "error": str(e),
+                "error": err_msg,
             }
 
         if result.file_path is None:
