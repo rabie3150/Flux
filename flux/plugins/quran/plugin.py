@@ -192,7 +192,14 @@ class QuranPlugin(ContentPlugin):
 
         if not surah or not ayah: return ""
 
-        verse_data = await VerseService().get_verse(surah, ayah)
+        ayah_end = meta.get("ayah_end")
+        verse_service = VerseService()
+        if ayah_end and ayah_end > ayah:
+            verse_data = await verse_service.get_verse_range(surah, ayah, ayah_end)
+            verse_ref = f"{surah}:{ayah}-{ayah_end}"
+        else:
+            verse_data = await verse_service.get_verse(surah, ayah)
+            verse_ref = f"{surah}:{ayah}"
         if not verse_data: return ""
 
         cfg = _deep_merge(DEFAULT_CONFIG, config)
@@ -208,7 +215,7 @@ class QuranPlugin(ContentPlugin):
 
         caption = Template(template_str).render(
             surah_name=surah_name,
-            verse_ref=f"{surah}:{ayah}",
+            verse_ref=verse_ref,
             arabic_text=verse_data.get("arabic", ""),
             translation=verse_data.get("translation", ""),
             hashtags=hashtags

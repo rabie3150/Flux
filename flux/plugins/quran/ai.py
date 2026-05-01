@@ -48,13 +48,14 @@ class GeminiAIClient:
         # Build prompt
         prompt = (
             "You are an expert in Quranic studies. The text below contains a Quranic video title "
-            "and/or description. Identify the exact surah and ayah being recited. "
+            "and/or description. Identify the exact surah and ayah range being recited. "
             "The text may quote the verse directly (e.g. 'قل هو الله أحد') or name the surah "
             "(e.g. 'سورة البقرة'). If only the surah is named and no specific ayah is quoted, "
-            "return ayah 1. If multiple verses are quoted, return the first one. "
-            "Return ONLY a JSON object with 'surah' (number) and 'ayah' (number). "
+            "return ayah 1. If multiple verses are recited, return the first and last ayah. "
+            "Return ONLY a JSON object with 'surah' (number), 'ayah' (number), and optionally "
+            "'ayah_end' (number) if more than one verse is recited. "
             "If you are completely unsure, return null. "
-            "Example: {\"surah\": 2, \"ayah\": 255}"
+            "Examples: {\"surah\": 2, \"ayah\": 255} or {\"surah\": 2, \"ayah\": 1, \"ayah_end\": 5}"
         )
 
         if description:
@@ -102,12 +103,15 @@ class GeminiAIClient:
                     
                     result = json.loads(text_response.strip())
                     if result and result.get("surah") and result.get("ayah"):
-                        return {
+                        out = {
                             "surah": int(result["surah"]),
                             "ayah": int(result["ayah"]),
                             "method": "gemini_ai",
-                            "confidence": 0.9 # Gemini is usually high confidence for this
+                            "confidence": 0.9
                         }
+                        if result.get("ayah_end"):
+                            out["ayah_end"] = int(result["ayah_end"])
+                        return out
                     return None
 
             except Exception as e:

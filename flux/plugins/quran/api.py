@@ -95,6 +95,23 @@ class VerseService:
                 "tafseer": None # Tafseer requires a separate API call if needed
             }
 
+    async def get_verse_range(self, surah: int, ayah_start: int, ayah_end: int) -> dict[str, Any] | None:
+        """Fetch multiple verses and return concatenated arabic + translation."""
+        verses: list[dict[str, Any]] = []
+        for ayah in range(ayah_start, ayah_end + 1):
+            v = await self.get_verse(surah, ayah)
+            if v:
+                verses.append(v)
+        if not verses:
+            return None
+        return {
+            "surah": surah,
+            "ayah": ayah_start,
+            "ayah_end": ayah_end,
+            "arabic": " ".join(v["arabic"] for v in verses if v.get("arabic")),
+            "translation": " ".join(v["translation"] for v in verses if v.get("translation")),
+        }
+
     async def _save_to_cache(self, db: AsyncSession, surah: int, ayah: int, data: dict[str, Any]):
         translations = {str(self.translation_id): data["translation"]}
         cache_entry = VerseCache(
