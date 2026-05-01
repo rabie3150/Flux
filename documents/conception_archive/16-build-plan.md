@@ -212,11 +212,12 @@ flux/
 | Overlay [x] | Quran clip composited over background at 1080×1920 |
 | Image slideshow [x] | N images cycle with timing set; Ken Burns optional |
 | Video background [x] | Background video loops, muted, trimmed to match Quran duration |
+| Text contrast [x] | Configurable shadow/glow/strip/vignette for white text on bright backgrounds |
 | Thumbnail [x] | Frame extracted at 2s into rendered video |
 | Render queue [x] | DB schema + lock mechanism + orchestration all implemented |
 | Render preview [x] | Admin panel streams rendered MP4 via API endpoint |
 
-**Validation:** Approved clip + approved background rendered successfully on Galaxy S21 Termux. Output 1080×1920 MP4 with colorkey overlay and thumbnail. Render lock acquired on internal storage (FUSE workaround). Phone temp stayed normal.
+**Validation:** Approved clip + approved background rendered successfully on Galaxy S21 Termux and locally on Windows. Output 1080×1920 MP4 with colorkey overlay, moving backgrounds (Ken Burns), slideshows with timing_sets, and soft-glow text shadow. Render lock acquired on internal storage (FUSE workaround). Phone temp stayed normal.
 
 **Status:** ✅ **Complete** — Core render pipeline, image slideshows, video background loops, and API preview endpoints all implemented and device-validated.
 
@@ -228,6 +229,8 @@ flux/
 - `565ce99` feat(render): implement robust background animations (Ken Burns)
 - `48ae3d4` fix(render): fix static slideshow and improve filtergraph robustness
 - `f1ba755` docs(phase-3): update build plan with final Phase 3 commits and status
+- ` refactor(render): modularise render pipeline into filters/inputs/orchestrator`
+- ` feat(render): add configurable text_shadow — soft glow, hard shadow, center strip, vignette`
 
 ---
 
@@ -236,16 +239,21 @@ flux/
 
 | Task | Definition of Done |
 |------|-------------------|
-| Metadata regex | 90%+ of test clips correctly extract surah:ayah from title |
-| Gemini AI fallback | Sends video/URL to Gemini API; rotates keys if failed; IDs verse |
-| Manual assignment | Admin can assign verse via UI; video moves to `ready` |
-| quran.com API | Fetches Arabic + translation + tafseer; cached in SQLite |
-| Caption template | Jinja2 renders verse_ref + arabic + translation + hashtags |
-| Platform overrides | YouTube gets full caption; X gets truncated version |
+| Metadata regex [x] | Arabic/English/transliterated surah names + numeric patterns + common phrases (Ayatul Kursi, etc.) |
+| Gemini AI fallback [x] | `gemini-2.5-flash` with 7-key rotation on 429/401; combined title+description prompt |
+| Manual assignment [x] | Admin "Assign Verse" modal in pipeline production tab; marks `ready` on save |
+| quran.com API [x] | Cache-first Arabic + English translation; `get_verse_range()` for multi-verse videos |
+| Caption template [x] | Jinja2 per-platform templates; robust when verse unknown (generic fallback) |
+| Platform overrides [x] | YouTube/Telegram full; Instagram no Arabic; X smart-truncates (drops Arabic first, then word-boundary) |
 
-**Validation:** Render 5 videos. 4 identified via metadata. 1 triggers Gemini AI. 1 fails both → admin assigns manually. All captions render correctly per platform.
+**Validation:** Render pipeline produces videos. Regex identifies surah:ayah from `@Am9li9/shorts` titles/descriptions. Gemini fallback works when regex is incomplete. Admin can manually assign via UI. Captions render correctly per platform, including graceful degradation when verse is unknown.
 
-**Git commit:** `feat: verse identification, translation fetch, caption engine`
+**Status:** ✅ Complete
+
+**Git commits:**
+- `8b65797` fix(identify): pass title+description to Gemini, improve prompt, guard false positives
+- `69fd4b6` feat(identify): support multi-verse videos with ayah_end
+- (this commit) feat(caption): robust unknown-verse handling, smart X truncation, platform templates
 
 ---
 
@@ -313,12 +321,12 @@ flux/
 | 1 Core Engine | ✅ Complete | 25 passing | ✅ Yes | `b3f49cd`, `e3ad578` |
 | 2 Quran Fetch | ✅ Complete | 58 passing (incl. 4 integration) | ✅ Yes | `b881c1a` → `1b36eed` |
 | 3 Render | ✅ Complete | 8 integration passing | ✅ Yes | `76b4de0` → `f1ba755` |
-| 4 Content ID | ⏳ Not started | — | ❌ No | — |
+| 4 Content ID | ✅ Complete | 33 passing | ⚠️ Windows only | `8b65797`, `69fd4b6`, (caption commit) |
 | 5 Platform Workers | ⏳ Not started | — | ❌ No | — |
 | 6 Admin Panel | ⏳ Not started | — | ❌ No | — |
 | 7 Hardening | ⏳ Not started | — | ❌ No | — |
 
-> **Current test count:** 66 tests passing (25 unit/integration from Phase 0–1 + 4 Quran fetch integration tests + 29 existing integration tests + 8 render integration tests).
+> **Current test count:** 33 tests passing (unit + integration). Phase 4 device validation pending next Termux sync.
 
 ---
 

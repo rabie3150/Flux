@@ -36,6 +36,50 @@ def _deep_merge(defaults: dict[str, Any], overrides: dict[str, Any]) -> dict[str
     return result
 
 
+def _pick_hashtags(cfg: dict[str, Any]) -> str:
+    """Select a random subset of hashtags from config."""
+    pool = cfg.get("hashtags", [])
+    if not pool:
+        return ""
+    count = min(len(pool), random.randint(3, 5))
+    return " ".join(f"#{h}" for h in random.sample(pool, count))
+
+
+def _smart_truncate(text: str, max_len: int) -> str:
+    """Truncate at word boundary, adding ellipsis. Never cut mid-word."""
+    if len(text) <= max_len:
+        return text
+    limit = max_len - 3
+    truncated = text[:limit]
+    last_space = truncated.rfind(" ")
+    if last_space > max_len // 2:
+        truncated = truncated[:last_space]
+    return truncated.strip() + "..."
+
+
+def _truncate_for_x(caption: str, max_len: int = 280) -> str:
+    """Smart X truncation: drop Arabic lines first, then trim at word boundary."""
+    if len(caption) <= max_len:
+        return caption
+
+    lines = caption.split("\n")
+    non_arabic = []
+    for line in lines:
+        text_only = line.replace(" ", "")
+        if not text_only:
+            continue
+        arabic_chars = sum(1 for c in line if "\u0600" <= c <= "\u06ff")
+        if arabic_chars > len(text_only) * 0.3:
+            continue
+        non_arabic.append(line)
+
+    no_arabic = "\n".join(non_arabic).strip()
+    if 0 < len(no_arabic) <= max_len:
+        return no_arabic
+
+    return _smart_truncate(no_arabic if no_arabic else caption, max_len)
+
+
 class QuranPlugin(ContentPlugin):
     """Quran Shorts content plugin for Flux."""
 
@@ -183,46 +227,58 @@ class QuranPlugin(ContentPlugin):
         async with AsyncSessionLocal() as db:
             res = await db.execute(select(ProducedContent).where(ProducedContent.id == produced_content_id))
             content = res.scalar_one_or_none()
-            if not content or not content.content_meta_json: return ""
-            
+            if not content or not content.content_meta_json:
+                return ""
+
             meta = json.loads(content.content_meta_json)
-            surah = meta.get("surah")
-            ayah = meta.get("ayah")
-            surah_name = meta.get("surah_name", f"Surah {surah}")
 
-        if not surah or not ayah: return ""
-
+        surah = meta.get("surah")
+        ayah = meta.get("ayah")
+        surah_name = meta.get("surah_name")
         ayah_end = meta.get("ayah_end")
-        verse_service = VerseService()
-        if ayah_end and ayah_end > ayah:
-            verse_data = await verse_service.get_verse_range(surah, ayah, ayah_end)
-            verse_ref = f"{surah}:{ayah}-{ayah_end}"
-        else:
-            verse_data = await verse_service.get_verse(surah, ayah)
-            verse_ref = f"{surah}:{ayah}"
-        if not verse_data: return ""
+        has_verse = bool(surah and ayah)
 
         cfg = _deep_merge(DEFAULT_CONFIG, config)
         platform = worker_config.get("platform", "default")
         templates = cfg.get("caption_templates", {})
-        template_str = templates.get(platform, templates.get("default", ""))
-        
-        if not template_str: return ""
 
-        pool = cfg.get("hashtags", [])
-        count = min(len(pool), random.randint(3, 5))
-        hashtags = " ".join([f"#{h}" for s in random.sample(pool, count)]) if pool else ""
+        verse_data = None
+        verse_ref = None
+        if has_verse:
+            verse_service = VerseService()
+            if ayah_end and ayah_end > ayah:
+                verse_data = await verse_service.get_verse_range(surah, ayah, ayah_end)
+                verse_ref = f"{surah}:{ayah}-{ayah_end}"
+            else:
+                verse_data = await verse_service.get_verse(surah, ayah)
+                verse_ref = f"{surah}:{ayah}"
 
-        caption = Template(template_str).render(
-            surah_name=surah_name,
-            verse_ref=verse_ref,
-            arabic_text=verse_data.get("arabic", ""),
-            translation=verse_data.get("translation", ""),
-            hashtags=hashtags
-        )
+        hashtags = _pick_hashtags(cfg)
+
+        context = {
+            "surah_name": surah_name or "",
+            "verse_ref": verse_ref or "",
+            "arabic_text": verse_data.get("arabic", "") if verse_data else "",
+            "translation": verse_data.get("translation", "") if verse_data else "",
+            "hashtags": hashtags,
+        }
+
+        if has_verse:
+            template_str = templates.get(platform, templates.get("default", ""))
+        else:
+            template_str = (
+                templates.get(f"{platform}_generic")
+                or templates.get("generic")
+                or templates.get("default", "")
+            )
+
+        if not template_str:
+            return ""
+
+        caption = Template(template_str).render(**context)
 
         if platform == "x" and len(caption) > 280:
-            caption = caption[:277] + "..."
+            caption = _truncate_for_x(caption, 280)
 
         return caption.strip()
 

@@ -30,11 +30,31 @@ DEFAULT_CONFIG: dict = {
             "{{ hashtags }}"
         ),
         "youtube": (
-            "📖 Surah {{ surah_name }} | Verse {{ verse_ref }}\n\n"
-            "Recitation of the Holy Quran.\n\n"
+            "📖 {{ surah_name }} | {{ verse_ref }}\n\n"
+            "{{ translation }}\n\n"
             "{{ hashtags }}"
         ),
-        "x": "📖 {{ surah_name }} ({{ verse_ref }})\n\n{{ translation }}\n\n#Quran #Islam",
+        "telegram": (
+            "📖 {{ surah_name }} ({{ verse_ref }})\n\n"
+            "{{ arabic_text }}\n\n"
+            "{{ translation }}\n\n"
+            "{{ hashtags }}"
+        ),
+        "instagram": (
+            "📖 {{ surah_name }} ({{ verse_ref }})\n\n"
+            "{{ translation }}\n\n"
+            "{{ hashtags }}"
+        ),
+        "x": (
+            "📖 {{ surah_name }} ({{ verse_ref }})\n\n"
+            "{{ translation }}\n\n"
+            "{{ hashtags }}"
+        ),
+        "generic": (
+            "Beautiful Quranic recitation 🎧\n\n"
+            "{{ hashtags }}"
+        ),
+        "x_generic": "Beautiful Quranic recitation 🎧 {{ hashtags }}",
     },
 }
 
