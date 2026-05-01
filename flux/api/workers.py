@@ -178,8 +178,10 @@ async def trigger_worker_post(
 
     result = await publish_for_worker(worker_id)
     if not result.get("ok"):
+        # Bad publisher config = 400, transient failure = 503, other = 500
+        status_code = 400 if not result.get("transient") and "Invalid publisher config" in result.get("error", "") else 503 if result.get("transient") else 500
         raise HTTPException(
-            status_code=500,
+            status_code=status_code,
             detail=result.get("error", "Post failed"),
         )
     return result

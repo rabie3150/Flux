@@ -85,7 +85,34 @@ async def _run_publish(worker_id: str) -> None:
 
 async def refresh_worker_job(worker_id: str) -> None:
     """Re-register a single worker's job (call after create/update)."""
-    await register_worker_jobs()
+    try:
+        scheduler = get_scheduler()
+    except RuntimeError:
+        return
+
+    async with AsyncSessionLocal() as db:
+        worker = await db.get(PlatformWorker, worker_id)
+    if not worker or not worker.enabled or not worker.schedule_cron:
+        # Remove job if worker disabled or has no schedule
+        try:
+            scheduler.remove_job(_job_id(worker_id))
+        except Exception:
+            pass
+        return
+
+    job_id = _job_id(worker_id)
+    try:
+        scheduler.add_job(
+            func=_run_publish,
+            trigger="cron",
+            id=job_id,
+            replace_existing=True,
+            **_parse_cron(worker.schedule_cron),
+            args=[worker.id],
+        )
+        logger.info("Refreshed worker job %s: %s", job_id, worker.schedule_cron)
+    except ValueError as exc:
+        logger.error("Invalid cron for worker %s: %s — %s", worker.id, worker.schedule_cron, exc)
 
 
 async def remove_worker_job(worker_id: str) -> None:

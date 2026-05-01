@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flux.core.crypto import decrypt_dict
 from flux.db import AsyncSessionLocal
 from flux.logger import get_logger, log_activity
-from flux.models import Pipeline, PlatformWorker, PostRecord, ProducedContent
+from flux.models import PipelineWorker, PlatformWorker, PostRecord, ProducedContent
 from flux.platforms.publisher import get_publisher
 from flux.plugins import get_plugin
 
@@ -40,7 +40,10 @@ async def _get_ready_content(
     db: AsyncSession, worker: PlatformWorker
 ) -> ProducedContent | None:
     """Pick the oldest ready content from any pipeline attached to this worker."""
-    pipeline_ids = {p.id for p in worker.pipelines}
+    result = await db.execute(
+        select(PipelineWorker.pipeline_id).where(PipelineWorker.worker_id == worker.id)
+    )
+    pipeline_ids = {row[0] for row in result.all()}
     if not pipeline_ids:
         return None
 
@@ -134,16 +137,17 @@ async def _update_worker_status(
 
 async def _maybe_auto_delete(db: AsyncSession, content: ProducedContent) -> None:
     """Delete local MP4 if all attached workers have published successfully."""
-    pipeline = await db.get(Pipeline, content.pipeline_id)
-    if not pipeline:
+    result = await db.execute(
+        select(PipelineWorker.worker_id).where(
+            PipelineWorker.pipeline_id == content.pipeline_id
+        )
+    )
+    worker_ids = {row[0] for row in result.all()}
+    if not worker_ids:
         return
 
-    workers = pipeline.workers
-    if not workers:
-        return
-
-    for worker in workers:
-        posted = await _already_posted(db, content.id, worker.id)
+    for worker_id in worker_ids:
+        posted = await _already_posted(db, content.id, worker_id)
         if not posted:
             return  # Not all platforms done yet
 
@@ -213,9 +217,16 @@ async def publish_for_worker(worker_id: str) -> dict[str, Any]:
                 worker.platform, worker.connection_strategy, credentials
             )
         except ValueError as exc:
-            logger.error("Invalid publisher config for worker %s: %s", worker_id, exc)
-            await _update_worker_status(db, worker, success=False, error=str(exc))
-            return {"ok": False, "error": str(exc)}
+            # Bad config is a permanent failure — no retry will help
+            err = f"Invalid publisher config: {exc}"
+            logger.error("Worker %s: %s", worker_id, err)
+            await _record_attempt(
+                db, content.id, worker.id, success=False, error=err, attempt_count=1
+            )
+            await _update_worker_status(db, worker, success=False, error=err)
+            worker.enabled = False
+            await db.commit()
+            return {"ok": False, "error": err, "transient": False}
 
         # Publish
         logger.info(
@@ -302,5 +313,5 @@ async def publish_for_worker(worker_id: str) -> dict[str, Any]:
             "error": result.error,
             "transient": result.transient,
             "attempt_count": attempt_count,
-            "will_retry": should_retry,
+            "retry_on_next_cron": should_retry,
         }
