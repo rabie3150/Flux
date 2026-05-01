@@ -95,7 +95,7 @@ class PlatformWorker(Base):
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=_new_id)
     platform: Mapped[str] = mapped_column(
         String(32), nullable=False
-    )  # youtube, instagram, telegram, tiktok, x
+    )  # youtube, instagram, tiktok, x
     display_name: Mapped[str] = mapped_column(String(128), nullable=False)
     credentials_json: Mapped[str] = mapped_column(Text, default="{}")
     schedule_cron: Mapped[Optional[str]] = mapped_column(String(64))

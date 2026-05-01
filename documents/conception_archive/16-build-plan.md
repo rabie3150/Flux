@@ -244,7 +244,7 @@ flux/
 | Manual assignment [x] | Admin "Assign Verse" modal in pipeline production tab; marks `ready` on save |
 | quran.com API [x] | Cache-first Arabic + English translation; `get_verse_range()` for multi-verse videos |
 | Caption template [x] | Jinja2 per-platform templates; robust when verse unknown (generic fallback) |
-| Platform overrides [x] | YouTube/Telegram full; Instagram no Arabic; X smart-truncates (drops Arabic first, then word-boundary) |
+| Platform overrides [x] | YouTube/TikTok full; Instagram no Arabic; X smart-truncates (drops Arabic first, then word-boundary) |
 
 **Validation:** Render pipeline produces videos. Regex identifies surah:ayah from `@Am9li9/shorts` titles/descriptions. Gemini fallback works when regex is incomplete. Admin can manually assign via UI. Captions render correctly per platform, including graceful degradation when verse is unknown.
 
@@ -263,16 +263,18 @@ flux/
 | Task | Definition of Done |
 |------|-------------------|
 | YouTube upload | Video + thumbnail + caption posted via Data API v3 |
-| Telegram post | Video + caption posted to channel via Bot API |
+| TikTok post | Video + caption posted via TikTok for Business API or Creator Portal |
 | Instagram post | Video posted via Instagrapi; session reused; no re-login storm |
 | Deduplication | Same video cannot be posted twice to same platform (DB constraint) |
 | Retry logic | Transient failures retry 3×; permanent failures pause worker |
 | Post log | Every attempt recorded with platform_post_id, URL, error_log |
 | Auto-delete | Local MP4 deleted after all platforms succeed (configurable) |
 
-**Validation:** Queue 1 ready video. It posts to YouTube + Telegram. Check YouTube Studio for unlisted video. Check Telegram channel. Verify post_records has 2 entries.
+**Validation:** Queue 1 ready video. It posts to YouTube + TikTok. Check YouTube Studio for unlisted video. Check TikTok account. Verify post_records has 2 entries.
 
-**Git commit:** `feat: platform workers — youtube, telegram, instagram, dedup, retry`
+> **⚠️ TikTok API Warning:** TikTok has no official video upload API for regular creator accounts. Options are (1) **TikTok for Business API** (requires business account + app approval), (2) **mobile automation** (brittle, out of scope), or (3) **third-party service** (Buffer/Hootsuite). Telegram stays as the notification/alert channel only.
+
+**Git commit:** `feat: platform workers — youtube, tiktok, instagram, dedup, retry`
 
 ---
 

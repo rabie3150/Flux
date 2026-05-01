@@ -34,7 +34,7 @@ DEFAULT_CONFIG: dict = {
             "{{ translation }}\n\n"
             "{{ hashtags }}"
         ),
-        "telegram": (
+        "tiktok": (
             "📖 {{ surah_name }} ({{ verse_ref }})\n\n"
             "{{ arabic_text }}\n\n"
             "{{ translation }}\n\n"
@@ -116,7 +116,7 @@ CONFIG_SCHEMA: dict = {
                 "default": {"type": "string"},
                 "youtube": {"type": "string"},
                 "instagram": {"type": "string"},
-                "telegram": {"type": "string"},
+                "tiktok": {"type": "string"},
                 "x": {"type": "string"},
             },
         },
