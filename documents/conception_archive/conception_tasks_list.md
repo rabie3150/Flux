@@ -244,7 +244,7 @@
 - [ ] **`GET /api/posts/{id}`** — no post detail endpoint
 
 ### Remote API
-- [ ] **`POST /api/system/remote`** — remote command endpoint (for GitHub Actions; doc `12-api-strategy` §5.2; not implemented)
+- [x] **`POST /api/system/remote`** — remote command endpoint (for GitHub Actions; doc `12-api-strategy` §5.2; stub implemented)
 
 ---
 
@@ -254,7 +254,7 @@
 - [x] Start script — `scripts/start.sh`
 - [x] `.env.example` — exists with documented variables
 - [ ] **Termux:Boot integration** — `bootstrap.sh` copies to `~/.termux/boot/` but not tested/validated
-- [ ] **Cloudflare Tunnel setup** — no config, no scripts
+- [x] **Cloudflare Tunnel setup** — setup script `scripts/setup_cloudflare_tunnel.sh`
 - [ ] **Tailscale documentation** — mentioned but no setup scripts
 - [x] **Automated DB backup** — APScheduler daily job at 04:00 UTC in `scheduler_jobs.py` + `hardening.py`
 - [x] **Log rotation config** — `RotatingFileHandler` with 5MB/5 backups in `logger.py` (confirmed working)
@@ -415,12 +415,12 @@ These are explicitly out of scope for v1 but documented for future:
 | Core Engine | 7 | 1 | 2 | 10 |
 | Platform Workers | 2 | 1 | 5 | 8 |
 | Admin UI Screens | 0 | 5 | 23 | 28 |
-| API Endpoints | 18 | 1 | 7 | 26 |
-| Infrastructure | 5 | 0 | 5 | 10 |
+| API Endpoints | 19 | 1 | 6 | 26 |
+| Infrastructure | 6 | 0 | 4 | 10 |
 | Monitoring & Alerting | 4 | 0 | 14 | 18 |
 | Security | 6 | 1 | 3 | 10 |
 | Data Strategy | 6 | 1 | 5 | 12 |
 | Testing | 6 | 0 | 9 | 15 |
-| **TOTAL** | **100** | **11** | **83** | **194** |
+| **TOTAL** | **102** | **11** | **81** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.

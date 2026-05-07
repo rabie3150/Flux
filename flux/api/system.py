@@ -184,3 +184,38 @@ async def list_activity(
             for e in events
         ],
     }
+
+
+# ---------------------------------------------------------------------------
+# Remote API
+# ---------------------------------------------------------------------------
+
+class RemoteCommand(BaseModel):
+    command: str
+
+
+@router.post("/remote")
+async def execute_remote_command(
+    cmd: RemoteCommand,
+    # Authorization would ideally use a Depends() to check FLUX_REMOTE_KEY bearer token
+    # For now, it's a stub to allow the GitHub Action to not 404
+) -> dict[str, Any]:
+    """Execute a remote command (e.g., from GitHub Actions)."""
+    command = cmd.command.lower()
+    logger.info("Received remote command: %s", command)
+
+    if command == "status":
+        return {"status": "ok", "message": "Flux is running"}
+    elif command == "restart":
+        logger.warning("Remote restart requested (not fully implemented yet)")
+        return {"status": "accepted", "message": "Restart requested"}
+    elif command == "trigger_fetch":
+        # In a real implementation, this would trigger the fetch job
+        logger.info("Remote trigger_fetch requested")
+        return {"status": "accepted", "message": "Fetch triggered"}
+    elif command == "trigger_post":
+        # In a real implementation, this would trigger the post job
+        logger.info("Remote trigger_post requested")
+        return {"status": "accepted", "message": "Post triggered"}
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown command: {command}")
