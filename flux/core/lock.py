@@ -156,11 +156,29 @@ class RenderLock:
 async def render_lock_ctx(timeout: float = 0.0):
     """Async context manager for render lock.
 
+    Checks device thermal state before acquiring — blocks renders
+    when CPU temperature exceeds safety threshold (Android/Linux only).
+
     Usage:
         async with render_lock_ctx() as acquired:
             if acquired:
                 await do_render()
     """
+    # Thermal guard — check CPU temperature before locking
+    try:
+        from flux.core.hardening import check_thermal_safe
+        is_safe, temp_c = check_thermal_safe()
+        if not is_safe:
+            logger.warning(
+                "Render blocked by thermal guard (%.1f°C). Skipping.",
+                temp_c or 0,
+            )
+            yield False
+            return
+    except Exception as exc:
+        # If thermal module fails, don't block renders — just warn
+        logger.debug("Thermal check failed (non-fatal): %s", exc)
+
     lock = RenderLock()
     acquired = await lock.acquire(timeout=timeout)
     if not acquired:
@@ -170,3 +188,4 @@ async def render_lock_ctx(timeout: float = 0.0):
     finally:
         if acquired:
             lock.release()
+

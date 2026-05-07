@@ -75,14 +75,14 @@
 - [ ] **Worker config** — no cron builder, no caption override editor, no hashtag editor, no test button
 - [ ] **Mobile layout** — `responsive.css` exists (1.6KB) but is minimal; not touch-optimized per wireframes
 
-### Phase 7: Watchdog, Remote Access & Hardening ⏳
-- [ ] **Cloudflare Tunnel** — no `cloudflared` config or scripts
-- [ ] **GitHub Actions watchdog** — no `.github/workflows/watchdog.yml`
-- [ ] **Remote restart** — no `workflow_dispatch` trigger
-- [ ] **Backup cron** — no automated DB backup job
-- [ ] **SSH hardening** — documented only, no `sshd_config` enforcement
-- [ ] **Log rotation** — `logger.py` has `RotatingFileHandler` but mentions backup count only
-- [ ] **Thermal guard** — `lock.py` references thermal but no actual temp sensor check before renders
+### Phase 7: Watchdog, Remote Access & Hardening ✅
+- [x] **Cloudflare Tunnel** — setup script `scripts/setup_cloudflare_tunnel.sh` with restricted ingress
+- [x] **GitHub Actions watchdog** — `.github/workflows/watchdog.yml` (30-min health ping + Telegram alert)
+- [x] **Remote restart** — `.github/workflows/remote-command.yml` with `workflow_dispatch`
+- [x] **Backup cron** — APScheduler daily job at 04:00 UTC with 7-day rotation (`flux/core/hardening.py`)
+- [x] **SSH hardening** — `scripts/harden_ssh.sh` (key-only auth enforcement)
+- [x] **Log rotation** — `RotatingFileHandler` 5MB × 5 backups in `logger.py` (was already correct)
+- [x] **Thermal guard** — CPU temp check via sysfs before renders in `lock.py` → blocks at ≥65°C
 
 ---
 
@@ -256,8 +256,8 @@
 - [ ] **Termux:Boot integration** — `bootstrap.sh` copies to `~/.termux/boot/` but not tested/validated
 - [ ] **Cloudflare Tunnel setup** — no config, no scripts
 - [ ] **Tailscale documentation** — mentioned but no setup scripts
-- [ ] **Automated DB backup** — no backup cron job or script
-- [ ] **Log rotation config** — `logger.py` has `RotatingFileHandler` with 5MB/5 backups but no explicit cron
+- [x] **Automated DB backup** — APScheduler daily job at 04:00 UTC in `scheduler_jobs.py` + `hardening.py`
+- [x] **Log rotation config** — `RotatingFileHandler` with 5MB/5 backups in `logger.py` (confirmed working)
 - [ ] **Alembic migrations** — no `alembic/` directory exists; tables created via `create_all()`
 - [ ] **Disaster recovery playbook** — documented only, no automation
 
@@ -267,9 +267,9 @@
 
 ### Health Check
 - [x] `GET /api/health` — returns status, uptime, version
-- [ ] **Rich health endpoint** — conceived with `checks.database`, `checks.scheduler`, `checks.storage`, `checks.plugins`, `checks.workers` sub-statuses; current endpoint returns bare-minimum
-- [ ] **Internal health job** — 5-min APScheduler health check (doc §2.2; not implemented)
-- [ ] **`degraded` / `unhealthy` status** — health always returns `healthy`
+- [x] Rich health endpoint — `/api/health` returns `checks.database`, `checks.scheduler`, `checks.storage`, `checks.thermal`, `checks.workers`
+- [x] **Internal health job** — APScheduler 5-min interval in `scheduler_jobs.py`
+- [x] **`degraded` / `unhealthy` status** — computed from subsystem check results
 
 ### Alerting Rules
 - [ ] **Immediate Telegram alerts** — worker failed, storage critical, render failed 3×, verse backlog, DB error
@@ -411,16 +411,16 @@ These are explicitly out of scope for v1 but documented for future:
 | Build Plan Phases 0–4 | 30 | 0 | 1 | 31 |
 | Build Plan Phase 5 | 9 | 0 | 4 | 13 |
 | Build Plan Phase 6 | 0 | 1 | 5 | 6 |
-| Build Plan Phase 7 | 0 | 0 | 7 | 7 |
+| Build Plan Phase 7 | 7 | 0 | 0 | 7 |
 | Core Engine | 7 | 1 | 2 | 10 |
 | Platform Workers | 2 | 1 | 5 | 8 |
 | Admin UI Screens | 0 | 5 | 23 | 28 |
 | API Endpoints | 18 | 1 | 7 | 26 |
-| Infrastructure | 3 | 0 | 7 | 10 |
-| Monitoring & Alerting | 1 | 0 | 17 | 18 |
+| Infrastructure | 5 | 0 | 5 | 10 |
+| Monitoring & Alerting | 4 | 0 | 14 | 18 |
 | Security | 6 | 1 | 3 | 10 |
 | Data Strategy | 6 | 1 | 5 | 12 |
 | Testing | 6 | 0 | 9 | 15 |
-| **TOTAL** | **88** | **11** | **95** | **194** |
+| **TOTAL** | **100** | **11** | **83** | **194** |
 
-> **~44% done, ~6% in-progress, ~50% not started.** The core engine (Phases 0–4) is solid. The largest gaps are: real platform publishing, the admin UI polish, monitoring/alerting, and the entire Phase 7 (hardening/watchdog/remote).
+> **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.

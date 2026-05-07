@@ -1,7 +1,8 @@
-"""Scheduler job registration for platform workers.
+"""Scheduler job registration for platform workers and system maintenance.
 
 On startup, reads all enabled workers with cron schedules and registers
-APScheduler jobs. Re-registration happens when workers are created/updated.
+APScheduler jobs. Also registers system jobs: DB backup and health check.
+Re-registration happens when workers are created/updated.
 """
 
 from __future__ import annotations
@@ -58,6 +59,56 @@ async def register_worker_jobs() -> None:
             logger.info("Scheduled worker job %s: %s", job_id, worker.schedule_cron)
         except ValueError as exc:
             logger.error("Invalid cron for worker %s: %s — %s", worker.id, worker.schedule_cron, exc)
+
+
+async def register_system_jobs() -> None:
+    """Register system maintenance jobs (backup, health check)."""
+    try:
+        scheduler = get_scheduler()
+    except RuntimeError:
+        logger.debug("Scheduler not initialized, skipping system job registration")
+        return
+
+    # ── Daily DB backup at 04:00 UTC ──────────────────────────────────
+    scheduler.add_job(
+        func=_run_backup,
+        trigger="cron",
+        id="flux_system_backup",
+        replace_existing=True,
+        hour=4,
+        minute=0,
+    )
+    logger.info("Registered system job: flux_system_backup (daily at 04:00 UTC)")
+
+    # ── Health check every 5 minutes ─────────────────────────────────
+    scheduler.add_job(
+        func=_run_health_check,
+        trigger="interval",
+        id="flux_system_health",
+        replace_existing=True,
+        minutes=5,
+    )
+    logger.info("Registered system job: flux_system_health (every 5 min)")
+
+
+async def _run_backup() -> None:
+    """Wrapper for APScheduler backup job."""
+    try:
+        from flux.core.hardening import run_backup_job
+        await run_backup_job()
+    except Exception:
+        logger.exception("Unhandled exception in backup job")
+
+
+async def _run_health_check() -> None:
+    """Wrapper for APScheduler health check job."""
+    try:
+        from flux.core.hardening import rich_health_check
+        result = await rich_health_check()
+        if result["status"] != "healthy":
+            logger.warning("Health check status: %s — %s", result["status"], result["checks"])
+    except Exception:
+        logger.exception("Unhandled exception in health check job")
 
 
 def _parse_cron(cron: str) -> dict:

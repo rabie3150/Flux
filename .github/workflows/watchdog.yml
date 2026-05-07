@@ -1,0 +1,45 @@
+name: Flux Watchdog
+
+on:
+  schedule:
+    # Every 30 minutes — ~48 runs/day × 15s ≈ 360 min/month (well within free tier)
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Health check
+        env:
+          FLUX_HEALTH_URL: ${{ secrets.FLUX_HEALTH_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$FLUX_HEALTH_URL" ]; then
+            echo "::warning::FLUX_HEALTH_URL secret not set. Skipping."
+            exit 0
+          fi
+
+          STATUS=$(curl -fsS --connect-timeout 15 --max-time 30 \
+            -o /dev/null -w "%{http_code}" \
+            "$FLUX_HEALTH_URL/api/health" || echo "000")
+
+          if [ "$STATUS" = "200" ]; then
+            echo "✅ Flux healthy (HTTP $STATUS)"
+            exit 0
+          fi
+
+          echo "🚨 Flux unreachable or unhealthy (HTTP $STATUS)"
+
+          # Send Telegram alert if credentials are configured
+          if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+            TIMESTAMP=$(date -u '+%Y-%m-%d %H:%M UTC')
+            curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+              -d "chat_id=${TELEGRAM_CHAT_ID}" \
+              -d "parse_mode=HTML" \
+              -d "text=🚨 <b>Flux Watchdog Alert</b>%0A%0AStatus: HTTP ${STATUS}%0ATime: ${TIMESTAMP}%0A%0AThe daemon may be down. Check the device."
+          fi
+
+          exit 1

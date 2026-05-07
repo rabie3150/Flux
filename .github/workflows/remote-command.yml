@@ -1,0 +1,41 @@
+name: Remote Command
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: 'Command to send to Flux (status, restart, trigger_fetch, trigger_post)'
+        required: true
+        default: 'status'
+        type: choice
+        options:
+          - status
+          - restart
+          - trigger_fetch
+          - trigger_post
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Send remote command
+        env:
+          FLUX_HEALTH_URL: ${{ secrets.FLUX_HEALTH_URL }}
+          FLUX_REMOTE_KEY: ${{ secrets.FLUX_REMOTE_KEY }}
+        run: |
+          if [ -z "$FLUX_HEALTH_URL" ] || [ -z "$FLUX_REMOTE_KEY" ]; then
+            echo "::error::FLUX_HEALTH_URL and FLUX_REMOTE_KEY secrets must be set."
+            exit 1
+          fi
+
+          COMMAND="${{ github.event.inputs.command }}"
+          echo "Sending command: $COMMAND"
+
+          RESPONSE=$(curl -fsS --connect-timeout 15 --max-time 30 \
+            -X POST "$FLUX_HEALTH_URL/api/system/remote" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $FLUX_REMOTE_KEY" \
+            -d "{\"command\":\"$COMMAND\"}")
+
+          echo "Response: $RESPONSE"

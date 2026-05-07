@@ -93,11 +93,12 @@ async def lifespan(app: FastAPI):
         raise
 
     try:
-        from flux.core.scheduler_jobs import register_worker_jobs
+        from flux.core.scheduler_jobs import register_worker_jobs, register_system_jobs
         await register_worker_jobs()
-        logger.info("[Flux] Worker jobs registered")
+        await register_system_jobs()
+        logger.info("[Flux] Worker and system jobs registered")
     except Exception as e:
-        logger.error("[Flux] Worker job registration failed: %s", e)
+        logger.error("[Flux] Job registration failed: %s", e)
         raise
 
     yield
@@ -138,13 +139,27 @@ if _admin_dir.exists():
 
 @app.get("/api/health")
 async def health_check() -> dict:
-    """System health endpoint for watchdog and diagnostics."""
-    return {
-        "status": "healthy",
-        "uptime_seconds": int(time.time() - _START_TIME),
-        "version": "0.1.0",
-        "environment": settings.flux_env,
-    }
+    """System health endpoint for watchdog and diagnostics.
+
+    Returns rich subsystem status: database, scheduler, storage, thermal, workers.
+    """
+    try:
+        from flux.core.hardening import rich_health_check
+        result = await rich_health_check()
+        result["uptime_seconds"] = int(time.time() - _START_TIME)
+        result["version"] = "0.1.0"
+        result["environment"] = settings.flux_env
+        return result
+    except Exception as e:
+        # Fallback to minimal health if hardening module fails
+        logger.warning("Rich health check failed, returning minimal: %s", e)
+        return {
+            "status": "degraded",
+            "uptime_seconds": int(time.time() - _START_TIME),
+            "version": "0.1.0",
+            "environment": settings.flux_env,
+            "error": str(e),
+        }
 
 
 @app.get("/")
