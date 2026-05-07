@@ -209,6 +209,27 @@ async def trigger_fetch(db: AsyncSession, pipeline_id: str) -> dict[str, Any]:
 
     config = json.loads(pipeline.config_json) if pipeline.config_json else {}
     
+    # Evaluate stock levels before fetching
+    from flux.core.ingredients import get_stock_level
+    
+    max_threshold = config.get("max_stock_threshold", 50)
+    all_maxed = True
+    stock_reports = {}
+    
+    for item_type in plugin.ingredient_types:
+        stock = await get_stock_level(db, pipeline_id, item_type, max_threshold=max_threshold)
+        stock_reports[item_type] = stock.total_active
+        if not stock.is_maxed:
+            all_maxed = False
+            
+    if all_maxed and plugin.ingredient_types:
+        logger.info(
+            "Fetch skipped for pipeline %s: max stock reached for all types (%s >= %d)",
+            pipeline_id, stock_reports, max_threshold
+        )
+        return {"created": 0, "pipeline_id": pipeline_id, "status": "skipped_max_stock"}
+    
+    
     # Pre-fetch known items from DB to pass to the plugin
     from flux.models import Ingredient
     stmt = select(Ingredient.source_url, Ingredient.metadata_json).where(

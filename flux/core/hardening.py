@@ -125,10 +125,77 @@ async def run_backup_job() -> dict:
     logger.info("Running scheduled DB backup...")
     backup_path = create_db_backup()
     deleted = cleanup_old_backups()
+    
+    # Also run DB data retention cleanup
+    cleanup_stats = await cleanup_database()
+    
     return {
         "backup": str(backup_path) if backup_path else None,
         "cleaned": deleted,
+        "db_cleanup": cleanup_stats,
     }
+
+
+# ---------------------------------------------------------------------------
+# Data Retention
+# ---------------------------------------------------------------------------
+
+async def cleanup_database() -> dict[str, int]:
+    """Apply data retention policies to the database.
+    
+    - Delete rejected ingredients older than 7 days
+    - Delete activity logs older than 30 days
+    - Clear render logs from produced content older than 7 days
+    """
+    from flux.db import AsyncSessionLocal
+    from flux.models import Ingredient, ActivityLog, ProducedContent
+    from sqlalchemy import delete, update
+    import time
+    
+    now = time.time()
+    seven_days_ago = datetime.fromtimestamp(now - (7 * 86400), tz=timezone.utc)
+    thirty_days_ago = datetime.fromtimestamp(now - (30 * 86400), tz=timezone.utc)
+    
+    stats = {"rejected_ingredients_deleted": 0, "activity_logs_deleted": 0, "render_logs_cleared": 0}
+    
+    try:
+        async with AsyncSessionLocal() as db:
+            # 1. Delete rejected ingredients > 7 days
+            stmt_ing = delete(Ingredient).where(
+                Ingredient.status == "rejected",
+                Ingredient.created_at < seven_days_ago
+            )
+            res_ing = await db.execute(stmt_ing)
+            stats["rejected_ingredients_deleted"] = res_ing.rowcount
+            
+            # 2. Delete activity logs > 30 days
+            stmt_act = delete(ActivityLog).where(
+                ActivityLog.timestamp < thirty_days_ago
+            )
+            res_act = await db.execute(stmt_act)
+            stats["activity_logs_deleted"] = res_act.rowcount
+            
+            # 3. Clear render logs > 7 days
+            stmt_ren = update(ProducedContent).where(
+                ProducedContent.render_log.isnot(None),
+                ProducedContent.created_at < seven_days_ago
+            ).values(render_log=None)
+            res_ren = await db.execute(stmt_ren)
+            stats["render_logs_cleared"] = res_ren.rowcount
+            
+            await db.commit()
+            
+        logger.info(
+            "Data retention cleanup complete: %d rejected ingredients deleted, "
+            "%d old activity logs deleted, %d old render logs cleared.",
+            stats["rejected_ingredients_deleted"],
+            stats["activity_logs_deleted"],
+            stats["render_logs_cleared"]
+        )
+    except Exception as exc:
+        logger.error("Data retention cleanup failed: %s", exc)
+        
+    return stats
 
 
 # ---------------------------------------------------------------------------

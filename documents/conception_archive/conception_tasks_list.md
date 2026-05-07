@@ -333,13 +333,13 @@
 
 ### Stock Management
 - [/] Auto-fetch on low stock — trigger exists but no per-type threshold config in settings UI
-- [ ] **Pause fetch on max stock** — not implemented
-- [ ] **StockLevel dataclass** — not found as formal class
+- [x] **Pause fetch on max stock** — implemented in `trigger_fetch`
+- [x] **StockLevel dataclass** — implemented in `flux/core/ingredients.py`
 
 ### Data Retention
-- [ ] **Auto-delete rejected ingredients after 7 days** — not implemented
-- [ ] **Activity log auto-truncate after 30 days** — not implemented
-- [ ] **Render log cleanup after 7 days** — not implemented
+- [x] **Auto-delete rejected ingredients after 7 days** — implemented in `cleanup_database`
+- [x] **Activity log auto-truncate after 30 days** — implemented in `cleanup_database`
+- [x] **Render log cleanup after 7 days** — implemented in `cleanup_database`
 - [x] Auto-delete published videos — `_maybe_auto_delete()` exists
 
 ### Multi-Pipeline Isolation
@@ -419,8 +419,8 @@ These are explicitly out of scope for v1 but documented for future:
 | Infrastructure | 6 | 0 | 4 | 10 |
 | Monitoring & Alerting | 4 | 0 | 14 | 18 |
 | Security | 6 | 1 | 3 | 10 |
-| Data Strategy | 6 | 1 | 5 | 12 |
+| Data Strategy | 11 | 1 | 0 | 12 |
 | Testing | 6 | 0 | 9 | 15 |
-| **TOTAL** | **102** | **11** | **81** | **194** |
+| **TOTAL** | **107** | **11** | **76** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.

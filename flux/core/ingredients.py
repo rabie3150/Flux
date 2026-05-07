@@ -10,10 +10,23 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from dataclasses import dataclass
 from flux.logger import get_logger, log_activity
 from flux.models import Ingredient
 
 logger = get_logger(__name__)
+
+
+@dataclass
+class StockLevel:
+    """Represents current stock for a specific ingredient type."""
+    type: str
+    approved_unused: int
+    pending: int
+    total_active: int  # pending + approved
+    is_low: bool
+    is_maxed: bool
+
 
 
 async def list_ingredients(
@@ -227,3 +240,52 @@ async def count_ingredients(
         stmt = stmt.where(Ingredient.status == status)
     result = await db.execute(stmt)
     return result.scalar_one()
+
+
+async def get_stock_level(
+    db: AsyncSession,
+    pipeline_id: str,
+    ingredient_type: str,
+    low_threshold: int = 5,
+    max_threshold: int = 50,
+) -> StockLevel:
+    """Evaluate current stock levels for a specific ingredient type."""
+    # Count pending
+    pending = await count_ingredients(db, pipeline_id, ingredient_type, "pending")
+    
+    # Count approved and unused
+    from flux.models import ProducedContent
+    
+    stmt_approved = select(Ingredient.id).where(
+        Ingredient.pipeline_id == pipeline_id,
+        Ingredient.type == ingredient_type,
+        Ingredient.status == "approved"
+    )
+    res_app = await db.execute(stmt_approved)
+    approved_ids = {row[0] for row in res_app.all()}
+    
+    stmt_used = select(ProducedContent.ingredient_ids_json).where(
+        ProducedContent.pipeline_id == pipeline_id
+    )
+    res_used = await db.execute(stmt_used)
+    used_ids = set()
+    for row in res_used.all():
+        if row[0]:
+            try:
+                ids = json.loads(row[0])
+                if isinstance(ids, list):
+                    used_ids.update(ids)
+            except Exception:
+                pass
+                
+    approved_unused = len(approved_ids - used_ids)
+    total_active = pending + approved_unused
+    
+    return StockLevel(
+        type=ingredient_type,
+        approved_unused=approved_unused,
+        pending=pending,
+        total_active=total_active,
+        is_low=total_active <= low_threshold,
+        is_maxed=total_active >= max_threshold,
+    )
