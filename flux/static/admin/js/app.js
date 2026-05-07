@@ -242,6 +242,7 @@ function bindWorkbenchEvents() {
     }));
     el.view.querySelectorAll('[data-preview-production]').forEach((button) => button.addEventListener('click', () => previewProduction(button.dataset.previewProduction)));
     el.view.querySelectorAll('[data-identify-production]').forEach((button) => button.addEventListener('click', () => openIdentify(button.dataset.identifyProduction)));
+    el.view.querySelectorAll('[data-redo-ai-production]').forEach((button) => button.addEventListener('click', () => redoAiProduction(button.dataset.redoAiProduction)));
 }
 function handleIngredientSelection(id, event, forcedChecked = null) {
     const visibleIds = currentIngredients().map((item) => item.id);
@@ -714,6 +715,24 @@ async function manualIdentify(event, id) {
     closeModal();
     await loadAllPipelineData();
     render();
+}
+async function redoAiProduction(id) {
+    const pipeline = selectedPipeline();
+    if (!pipeline) return;
+    
+    startOperation('identify', pipeline, 'Re-running AI Verse Detection', [
+        'Querying AI model for verse matching',
+        'Fetching translations from Quran API'
+    ]);
+    
+    try {
+        const result = await api(`/api/pipelines/${pipeline.id}/production/${id}/redo-ai`, { method: 'POST' });
+        await loadAllPipelineData();
+        const success = result.status === 'ready';
+        finishOperation(success ? 'AI detection successful.' : 'AI detection failed to find a match.', success ? 'success' : 'error');
+    } catch (error) {
+        finishOperation(error.message, 'error');
+    }
 }
 function openMediaModal({ title, eyebrow, kind, src, detail = '' }) {
     el.modalTitle.textContent = title;

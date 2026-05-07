@@ -158,8 +158,7 @@ def log_activity(
 ) -> None:
     """Log an activity event with structured metadata.
 
-    This is a convenience wrapper for structured activity logging.
-    Database persistence is planned for Phase 2; currently logs only.
+    Logs to Python logger and persists to the database ActivityLog table.
     """
     logger = get_logger("flux.activity")
 
@@ -182,3 +181,30 @@ def log_activity(
 
     log_method = getattr(logger, level, logger.info)
     log_method(message, extra=extra)
+
+    # Database persistence
+    try:
+        import asyncio
+        from flux.models import ActivityLog
+        from flux.db import AsyncSessionLocal
+        import json
+
+        async def _do_insert():
+            async with AsyncSessionLocal() as db:
+                log = ActivityLog(
+                    level=level,
+                    event_type=event_type,
+                    message=message,
+                    metadata_json=json.dumps(extra)
+                )
+                db.add(log)
+                await db.commit()
+        
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(_do_insert())
+        except RuntimeError:
+            pass # No event loop running
+    except Exception as e:
+        logger.error("Failed to persist activity log to database: %s", e)
+

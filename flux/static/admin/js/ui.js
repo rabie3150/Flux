@@ -272,7 +272,11 @@ function productionRow(item) {
         <td class="status-cell">${statusPill(statusLabel(item.status), item.status)}</td>
         <td class="verse-cell">${productionVerseSummary(item)}</td>
         <td class="rendered-cell" title="${escapeAttr(formatDate(item.rendered_at))}">${shortDate(item.rendered_at)}</td>
-        <td class="table-actions icon-actions"><button class="button compact table-icon" title="Preview" aria-label="Preview production item" data-preview-production="${item.id}">&#9654;</button><button class="button compact ghost table-icon" title="Assign verse" aria-label="Assign verse" data-identify-production="${item.id}">#</button></td>
+        <td class="table-actions icon-actions">
+            <button class="button compact table-icon" title="Preview" aria-label="Preview production item" data-preview-production="${item.id}">&#9654;</button>
+            <button class="button compact ghost table-icon" title="Assign verse" aria-label="Assign verse" data-identify-production="${item.id}">#</button>
+            <button class="button compact ghost table-icon" title="Redo AI Verse Detection" aria-label="Redo AI Verse Detection" data-redo-ai-production="${item.id}">&#8634;</button>
+        </td>
     </tr>`;
 }
 

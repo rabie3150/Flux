@@ -14,13 +14,91 @@ from flux.core import production as production_service
 from flux.core.pipeline import get_pipeline
 from flux.db import get_db
 from flux.logger import get_logger
+from flux.models import VerseCache
+from flux.plugins.quran.api import VerseService
 
 logger = get_logger(__name__)
 
 router = APIRouter(prefix="/api/pipelines", tags=["production"])
 
 
-def _serialize_production(p) -> dict[str, Any]:
+def _verse_ref(meta: dict[str, Any]) -> str:
+    surah = meta.get("surah")
+    ayah = meta.get("ayah")
+    ayah_end = meta.get("ayah_end")
+    if not surah or not ayah:
+        return "Unknown verse"
+    if ayah_end and ayah_end > ayah:
+        return f"{surah}:{ayah}-{ayah_end}"
+    return f"{surah}:{ayah}"
+
+
+async def _detected_verses(db: AsyncSession, meta: dict[str, Any]) -> dict[str, Any] | None:
+    surah = meta.get("surah")
+    ayah = meta.get("ayah")
+    ayah_end = meta.get("ayah_end") or ayah
+    if not surah or not ayah:
+        return None
+
+    rows_by_ayah = {}
+    for ayah_number in range(int(ayah), int(ayah_end) + 1):
+        result = await db.get(VerseCache, {"surah_number": int(surah), "ayah_number": ayah_number})
+        if result:
+            rows_by_ayah[ayah_number] = result
+
+    translations = []
+    arabic = []
+    verses = []
+    service = VerseService()
+    for ayah_number in range(int(ayah), int(ayah_end) + 1):
+        row = rows_by_ayah.get(ayah_number)
+        if not row:
+            try:
+                verse_data = await service.get_verse(int(surah), ayah_number)
+                if verse_data:
+                    arabic_text = verse_data.get("arabic", "")
+                    translation = verse_data.get("translation", "")
+                    arabic.append(arabic_text)
+                    translations.append(translation)
+                    verses.append({
+                        "ref": f"{surah}:{ayah_number}",
+                        "surah": surah,
+                        "ayah": ayah_number,
+                        "arabic": arabic_text,
+                        "translation": translation,
+                    })
+                continue
+            except Exception as exc:
+                logger.warning("Verse text lookup failed for %s:%s: %s", surah, ayah_number, exc)
+                continue
+
+        arabic_text = row.arabic_text or ""
+        payload = json.loads(row.translations_json or "{}")
+        translation = next(iter(payload.values()), "")
+        arabic.append(arabic_text)
+        translations.append(translation)
+        verses.append({
+            "ref": f"{surah}:{row.ayah_number}",
+            "surah": surah,
+            "ayah": row.ayah_number,
+            "arabic": arabic_text,
+            "translation": translation,
+        })
+
+    return {
+        "ref": _verse_ref(meta),
+        "surah": surah,
+        "surah_name": meta.get("surah_name"),
+        "ayah": ayah,
+        "ayah_end": ayah_end if ayah_end != ayah else None,
+        "verses": verses,
+        "arabic": " ".join(text for text in arabic if text),
+        "translation": " ".join(text for text in translations if text),
+    }
+
+
+async def _serialize_production(db: AsyncSession, p) -> dict[str, Any]:
+    content_meta = json.loads(p.content_meta_json) if p.content_meta_json else {}
     return {
         "id": p.id,
         "pipeline_id": p.pipeline_id,
@@ -28,7 +106,8 @@ def _serialize_production(p) -> dict[str, Any]:
         "render_method": p.render_method,
         "file_path": p.file_path,
         "thumbnail_path": p.thumbnail_path,
-        "content_meta": json.loads(p.content_meta_json) if p.content_meta_json else {},
+        "content_meta": content_meta,
+        "detected_verses": await _detected_verses(db, content_meta),
         "caption_text": p.caption_text,
         "status": p.status,
         "render_log": p.render_log,
@@ -53,7 +132,7 @@ async def list_produced_content(
     items = await production_service.list_produced_content(
         db, pipeline_id=pipeline_id, status=status, limit=limit, offset=offset
     )
-    return [_serialize_production(item) for item in items]
+    return [await _serialize_production(db, item) for item in items]
 
 
 @router.get("/{pipeline_id}/production/{content_id}")
@@ -67,7 +146,7 @@ async def get_produced_content(
     if item is None or item.pipeline_id != pipeline_id:
         raise HTTPException(status_code=404, detail="Produced content not found")
     
-    return _serialize_production(item)
+    return await _serialize_production(db, item)
 
 
 @router.post("/{pipeline_id}/production/{content_id}/identify")
@@ -84,11 +163,44 @@ async def update_production_metadata(
 
     # If surah and ayah are provided, mark as ready
     success = bool(data.get("surah") and data.get("ayah"))
+    metadata = dict(data)
+    if success:
+        metadata["identified_by"] = "manual"
+        metadata["manual_override"] = True
+        if not metadata.get("ayah_end"):
+            existing = json.loads(item.content_meta_json or "{}")
+            existing.pop("ayah_end", None)
+            item.content_meta_json = json.dumps(existing)
     
     updated = await production_service.update_identification_result(
-        db, content_id, success=success, metadata=data
+        db, content_id, success=success, metadata=metadata
     )
-    return _serialize_production(updated)
+    return await _serialize_production(db, updated)
+
+
+@router.post("/{pipeline_id}/production/{content_id}/redo-ai")
+async def redo_ai_identification(
+    pipeline_id: str,
+    content_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Re-run the AI identification process for a produced content item."""
+    from flux.core.pipeline import identify_produced_content
+    
+    item = await production_service.get_produced_content(db, content_id)
+    if item is None or item.pipeline_id != pipeline_id:
+        raise HTTPException(status_code=404, detail="Produced content not found")
+
+    try:
+        result = await identify_produced_content(db, content_id)
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("error") or result.get("reason", "Identification failed"))
+        
+        # Fetch the updated item to return
+        updated = await production_service.get_produced_content(db, content_id)
+        return await _serialize_production(db, updated)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.get("/{pipeline_id}/production/{content_id}/stream")
