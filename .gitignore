@@ -37,6 +37,9 @@ env/
 .env.local
 *.key
 *.pem
+secrets/
+client_secret*.json
+youtube_credentials.json
 
 # SQLite
 *.db

@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flux.core.crypto import decrypt_dict
 from flux.db import AsyncSessionLocal
 from flux.logger import get_logger, log_activity
-from flux.models import PipelineWorker, PlatformWorker, PostRecord, ProducedContent
+from flux.models import Pipeline, PipelineWorker, PlatformWorker, PostRecord, ProducedContent
 from flux.platforms.publisher import get_publisher
 from flux.plugins import get_plugin
 
