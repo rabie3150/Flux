@@ -157,6 +157,8 @@ def _normalize_arabic(text: str) -> str:
         text = text.replace(ch, "")
     # Normalize alef variants
     text = text.replace("\u0623", "\u0627").replace("\u0625", "\u0627").replace("\u0622", "\u0627")
+    # Normalize teh marbuta to ha
+    text = text.replace("ة", "ه")
     return text
 
 for s in _SURAHS:
@@ -181,16 +183,16 @@ _NUMERIC_RE = re.compile(
 
 # Named pattern: "Al-Baqarah 255", "Surah Al-Baqarah Ayah 255", etc.
 _EN_NAME_PATTERN = "|".join(
-    re.escape(name) for name in sorted(_SURAH_BY_EN.keys(), key=len, reverse=True)
+    re.escape(name) for name in sorted(list(_SURAH_BY_EN.keys()) + list(_SURAH_BY_TR.keys()), key=len, reverse=True)
 )
 _AR_NAME_PATTERN = "|".join(
     re.escape(_normalize_arabic(name)) for name in sorted(_SURAH_BY_AR.keys(), key=len, reverse=True)
 )
 
 _NAMED_RE = re.compile(
-    r"(?:surah|chapter|sura|سورة)?\s*"
+    r"(?:surah|chapter|sura|سورة|سوره)?\s*"
     r"(?:(" + _EN_NAME_PATTERN + r")|(" + _AR_NAME_PATTERN + r"))"
-    r"\s*(?:verse|ayah|آية)?\s*[:\-\.\s]*"
+    r"\s*(?:verse|ayah|آية|اية|ايه)?\s*[:\-\.\s]*"
     r"(\d{1,3})?",  # Ayah is now optional
     re.IGNORECASE | re.UNICODE,
 )
@@ -259,7 +261,7 @@ def identify_from_title(title: str) -> dict[str, Any] | None:
     # 1. Try common phrases first
     for cv in _COMMON_VERSES:
         for name in cv["names"]:
-            if name in norm_text:
+            if _normalize_arabic(name.lower()) in norm_text:
                 return {
                     "surah": cv["surah"],
                     "ayah": cv["ayah"],

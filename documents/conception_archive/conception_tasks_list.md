@@ -355,10 +355,10 @@
 
 ### Unit Tests
 - [x] `tests/unit/test_health.py` — exists
-- [ ] **Plugin base tests** — RenderResult validation, hook signatures
-- [ ] **Verse ID regex tests** — patterns against sample titles
-- [ ] **Caption template tests** — Jinja2 rendering, truncation
-- [ ] **Lock tests** — acquire/release, timeout, concurrency
+- [x] **Plugin base tests** — `test_plugins.py` tests RenderResult validation
+- [x] **Verse ID regex tests** — `test_quran_regex.py` tests pattern extraction
+- [x] **Caption template tests** — `test_caption.py` tests Jinja2 truncation/rendering
+- [x] **Lock tests** — `test_lock.py` tests acquire/release and timeouts
 - [x] **Storage budget tests** — `tests/unit/test_storage.py`
 - [x] **Notification format tests** — implicitly covered by Telegram alert integration
 
@@ -420,7 +420,7 @@ These are explicitly out of scope for v1 but documented for future:
 | Monitoring & Alerting | 11 | 0 | 7 | 18 |
 | Security | 7 | 0 | 3 | 10 |
 | Data Strategy | 12 | 0 | 0 | 12 |
-| Testing | 8 | 0 | 7 | 15 |
-| **TOTAL** | **120** | **8** | **66** | **194** |
+| Testing | 12 | 0 | 3 | 15 |
+| **TOTAL** | **124** | **8** | **62** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.
