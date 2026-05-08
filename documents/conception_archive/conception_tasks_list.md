@@ -320,7 +320,7 @@
 - [x] Keyword blocklist — in `backgrounds.py`
 
 ### Log Redaction
-- [/] Log redaction — `logger.py` references credential sanitization but unclear if comprehensive `REDACT_PATTERNS` from doc §4.4 are implemented
+- [x] Log redaction — comprehensive `REDACT_PATTERNS` implemented in `logger.py` (handles JWTs, Gemini keys, Instagrapi sessions, and OAuth tokens)
 
 ---
 
@@ -418,9 +418,9 @@ These are explicitly out of scope for v1 but documented for future:
 | API Endpoints | 19 | 1 | 6 | 26 |
 | Infrastructure | 6 | 0 | 4 | 10 |
 | Monitoring & Alerting | 11 | 0 | 7 | 18 |
-| Security | 6 | 1 | 3 | 10 |
+| Security | 7 | 0 | 3 | 10 |
 | Data Strategy | 12 | 0 | 0 | 12 |
 | Testing | 8 | 0 | 7 | 15 |
-| **TOTAL** | **119** | **9** | **66** | **194** |
+| **TOTAL** | **120** | **8** | **66** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.

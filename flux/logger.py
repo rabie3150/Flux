@@ -44,6 +44,13 @@ _REDACT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r'(private[_-]?key["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+/=.\-]{16,})', re.IGNORECASE), r"\1<key-redacted>"),
     # Master key / Fernet key
     (re.compile(r'(FLUX_MASTER_KEY["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_+=/\-]{20,})', re.IGNORECASE), r"\1<master-key-redacted>"),
+    # Gemini / Google API Keys
+    (re.compile(r'(AIza[0-9A-Za-z_-]{35})', re.IGNORECASE), "<google-api-key-redacted>"),
+    # Instagrapi specific tokens (sessionid, csrftoken)
+    (re.compile(r'(sessionid["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9%_-]{20,})', re.IGNORECASE), r"\1<sessionid-redacted>"),
+    (re.compile(r'(csrftoken["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_-]{20,})', re.IGNORECASE), r"\1<csrf-redacted>"),
+    # JWT Tokens (ey...)
+    (re.compile(r'(eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)'), "<jwt-redacted>"),
 ]
 
 
