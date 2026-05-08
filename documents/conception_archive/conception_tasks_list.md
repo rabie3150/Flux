@@ -387,6 +387,7 @@
 
 These are explicitly out of scope for v1 but documented for future:
 
+- [x] **Language Shorts plugin** — fully implemented with Gemini + TTS + FFmpeg composition
 - [ ] Hadith image plugin (`image_compose` render mode)
 - [ ] Multi-pipeline coordination (queue fairness)
 - [ ] Best-time-to-post (YouTube analytics)
