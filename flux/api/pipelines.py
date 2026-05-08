@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flux.core import pipeline as pipeline_service
 from flux.db import get_db
 from flux.logger import get_logger
-from flux.models import Pipeline, Plugin, PostRecord
+from flux.models import Pipeline, Plugin, PostRecord, ProducedContent  # noqa
 
 logger = get_logger(__name__)
 
@@ -222,10 +222,12 @@ async def pipeline_stats(
 
     # Last post time from post records
     from sqlalchemy import func
+    from flux.models import ProducedContent as PC
     post_result = await db.execute(
         select(func.max(PostRecord.created_at))
-        .join(ProducedContent)
-        .where(ProducedContent.pipeline_id == pipeline_id)
+        .select_from(PostRecord)
+        .join(PC, PostRecord.produced_content_id == PC.id)
+        .where(PC.pipeline_id == pipeline_id)
     )
     last_post_at = post_result.scalar_one_or_none()
 

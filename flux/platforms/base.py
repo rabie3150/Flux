@@ -54,3 +54,12 @@ class PlatformPublisher(ABC):
     def name(self) -> str:
         """Human-readable name of this publisher strategy."""
         ...
+
+    async def test(self) -> dict[str, Any]:
+        """Dry-run credential validation.
+
+        Returns:
+            {"ok": True} if credentials are valid,
+            {"ok": False, "error": "..."} otherwise.
+        """
+        return {"ok": True, "message": "No custom validation implemented for this publisher"}

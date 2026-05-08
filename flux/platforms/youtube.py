@@ -384,6 +384,28 @@ class YouTubeOfficialPublisher(PlatformPublisher):
             privacy_status=privacy_status,
         )
 
+    async def test(self) -> dict[str, Any]:
+        """Validate YouTube credentials by attempting token refresh."""
+        missing = [
+            k
+            for k in ("client_id", "client_secret", "refresh_token")
+            if not self.credentials.get(k)
+        ]
+        if missing:
+            return {
+                "ok": False,
+                "error": f"Missing credentials: {', '.join(missing)}",
+            }
+
+        def _check() -> dict[str, Any]:
+            credentials = _build_credentials(self.credentials)
+            error = _refresh_if_needed(credentials)
+            if error:
+                return {"ok": False, "error": error}
+            return {"ok": True, "message": "YouTube credentials valid — token refresh successful"}
+
+        return await asyncio.to_thread(_check)
+
 
 class YouTubeThirdPartyPublisher(PlatformPublisher):
     """Publish via third-party service (Buffer, Hootsuite, etc.)."""

@@ -166,6 +166,50 @@ async def delete_worker(
     return {"deleted": worker_id}
 
 
+@router.post("/{worker_id}/test")
+async def test_worker_credentials(
+    worker_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Dry-run credential validation for a worker."""
+    worker = await worker_service.get_worker(db, worker_id)
+    if worker is None:
+        raise HTTPException(status_code=404, detail="Worker not found")
+
+    from flux.core.crypto import decrypt_dict
+    from flux.platforms.publisher import get_publisher
+
+    try:
+        credentials = decrypt_dict(worker.credentials_json)
+    except Exception as exc:
+        return {"ok": False, "error": f"Failed to decrypt credentials: {exc}"}
+
+    publisher = get_publisher(worker.platform, worker.connection_strategy, credentials)
+    if publisher is None:
+        return {"ok": False, "error": f"No publisher found for {worker.platform}/{worker.connection_strategy}"}
+
+    # If the publisher has a test method, use it; otherwise fall back to basic validation
+    if hasattr(publisher, "test"):
+        test_result = await publisher.test()
+        return test_result
+
+    # Basic validation: ensure required credential fields are present
+    required_map = {
+        ("youtube", "official"): ["client_id", "client_secret", "refresh_token"],
+        ("instagram", "official"): ["app_id", "app_secret", "access_token", "instagram_account_id"],
+        ("instagram", "unofficial"): ["username", "password"],
+        ("x", "official"): ["api_key", "api_secret", "access_token", "access_token_secret"],
+        ("tiktok", "official"): ["app_id", "app_secret", "access_token"],
+    }
+    required = required_map.get((worker.platform, worker.connection_strategy))
+    if required:
+        missing = [k for k in required if not credentials.get(k)]
+        if missing:
+            return {"ok": False, "error": f"Missing credentials: {', '.join(missing)}"}
+
+    return {"ok": True, "message": "Credentials appear valid (basic check)"}
+
+
 @router.post("/{worker_id}/post")
 async def trigger_worker_post(
     worker_id: str,
