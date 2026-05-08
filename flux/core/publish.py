@@ -307,6 +307,13 @@ async def publish_for_worker(worker_id: str) -> dict[str, Any]:
                 message=f"Worker {worker.display_name} paused: {result.error}",
                 worker_id=worker.id,
             )
+            
+            from flux.core.notifications import send_alert_worker_failed
+            await send_alert_worker_failed(
+                worker_name=worker.display_name,
+                platform=worker.platform,
+                error_msg=result.error or "Unknown error",
+            )
 
         return {
             "ok": False,

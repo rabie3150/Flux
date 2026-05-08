@@ -374,6 +374,27 @@ async def trigger_render(
                 message=f"Render failed: {err_msg}",
                 pipeline_id=pipeline_id,
             )
+            
+            # Count consecutive failures
+            from sqlalchemy import desc
+            from flux.models import ProducedContent
+            recent_renders = await db.execute(
+                select(ProducedContent.status)
+                .where(ProducedContent.pipeline_id == pipeline_id)
+                .order_by(desc(ProducedContent.created_at))
+                .limit(5)
+            )
+            consecutive = 0
+            for row in recent_renders.all():
+                if row[0] == "failed":
+                    consecutive += 1
+                else:
+                    break
+                    
+            if consecutive >= 3:
+                from flux.core.notifications import send_alert_render_failed
+                await send_alert_render_failed(pipeline_id, err_msg, consecutive)
+
             return {
                 "pipeline_id": pipeline_id,
                 "content_id": content.id,

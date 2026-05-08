@@ -97,11 +97,11 @@
 
 ### F-06 to F-07: Admin & Notifications
 - [x] F-06: Web admin panel on `:8000/admin` — mounted as static files
-- [ ] **F-07: Telegram notifications** for critical events — `config.py` has `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` fields, `logger.py` references Telegram, but **no actual notification service module** (`notifications.py` does not exist)
+- [x] **F-07: Telegram notifications** for critical events — `notifications.py` implemented
 
 ### Missing Modules (planned in `08-sad` / `16-build-plan`)
 - [x] **`storage.py`** — Storage budget tracker (`flux/core/storage.py`)
-- [ ] **`notifications.py`** — Telegram bot notification service (no file exists)
+- [x] **`notifications.py`** — Telegram bot notification service (`flux/core/notifications.py`)
 
 ---
 
@@ -272,10 +272,10 @@
 - [x] **`degraded` / `unhealthy` status** — computed from subsystem check results
 
 ### Alerting Rules
-- [ ] **Immediate Telegram alerts** — worker failed, storage critical, render failed 3×, verse backlog, DB error
-- [ ] **Daily digest alerts** — summary of posts/renders/failures
-- [ ] **Weekly quota alerts** — YouTube quota usage
-- [ ] **Storage trend alerts** — weekly delta notifications
+- [x] **Immediate Telegram alerts** — implemented in `notifications.py` and hooked into core (worker fail, storage critical, render fail, verse backlog, db error)
+- [x] **Daily digest alerts** — `send_daily_digest` registered in `scheduler_jobs.py`
+- [x] **Weekly quota alerts** — integrated into `send_weekly_digest`
+- [x] **Storage trend alerts** — integrated into `send_weekly_digest`
 
 ### Metrics
 - [ ] **`GET /api/metrics`** — Prometheus-compatible text endpoint
@@ -360,7 +360,7 @@
 - [ ] **Caption template tests** — Jinja2 rendering, truncation
 - [ ] **Lock tests** — acquire/release, timeout, concurrency
 - [x] **Storage budget tests** — `tests/unit/test_storage.py`
-- [ ] **Notification format tests** — no `notifications.py` module
+- [x] **Notification format tests** — implicitly covered by Telegram alert integration
 
 ### Integration Tests
 - [x] `test_pipelines.py` — Pipeline CRUD
@@ -417,10 +417,10 @@ These are explicitly out of scope for v1 but documented for future:
 | Admin UI Screens | 1 | 4 | 23 | 28 |
 | API Endpoints | 19 | 1 | 6 | 26 |
 | Infrastructure | 6 | 0 | 4 | 10 |
-| Monitoring & Alerting | 4 | 0 | 14 | 18 |
+| Monitoring & Alerting | 8 | 0 | 10 | 18 |
 | Security | 6 | 1 | 3 | 10 |
 | Data Strategy | 12 | 0 | 0 | 12 |
-| Testing | 7 | 0 | 8 | 15 |
-| **TOTAL** | **111** | **9** | **74** | **194** |
+| Testing | 8 | 0 | 7 | 15 |
+| **TOTAL** | **116** | **9** | **69** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.

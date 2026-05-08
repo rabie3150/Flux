@@ -90,6 +90,47 @@ async def register_system_jobs() -> None:
     )
     logger.info("Registered system job: flux_system_health (every 5 min)")
 
+    # ── Daily Telegram Digest at 08:00 UTC ────────────────────────────
+    scheduler.add_job(
+        func=_run_daily_digest,
+        trigger="cron",
+        id="flux_daily_digest",
+        replace_existing=True,
+        hour=8,
+        minute=0,
+    )
+    logger.info("Registered system job: flux_daily_digest (daily at 08:00 UTC)")
+
+    # ── Weekly Telegram Digest on Sunday at 08:30 UTC ─────────────────
+    scheduler.add_job(
+        func=_run_weekly_digest,
+        trigger="cron",
+        id="flux_weekly_digest",
+        replace_existing=True,
+        day_of_week="sun",
+        hour=8,
+        minute=30,
+    )
+    logger.info("Registered system job: flux_weekly_digest (Sunday at 08:30 UTC)")
+
+
+async def _run_daily_digest() -> None:
+    """Wrapper for daily digest job."""
+    try:
+        from flux.core.notifications import send_daily_digest
+        await send_daily_digest()
+    except Exception:
+        logger.exception("Unhandled exception in daily digest job")
+
+
+async def _run_weekly_digest() -> None:
+    """Wrapper for weekly digest job."""
+    try:
+        from flux.core.notifications import send_weekly_digest
+        await send_weekly_digest()
+    except Exception:
+        logger.exception("Unhandled exception in weekly digest job")
+
 
 async def _run_backup() -> None:
     """Wrapper for APScheduler backup job."""
@@ -107,8 +148,29 @@ async def _run_health_check() -> None:
         result = await rich_health_check()
         if result["status"] != "healthy":
             logger.warning("Health check status: %s — %s", result["status"], result["checks"])
-    except Exception:
+            
+            # Trigger alerts for specific failures
+            from flux.core.notifications import send_alert_storage_critical, send_alert_db_error
+            
+            checks = result.get("checks", {})
+            if "fail" in checks.get("database", ""):
+                await send_alert_db_error(checks["database"])
+                
+            if "critical" in checks.get("storage", ""):
+                from flux.core.storage import get_storage_budget
+                budget = get_storage_budget()
+                await send_alert_storage_critical(
+                    percent_used=budget.percent_used,
+                    used_mb=budget.used_bytes / 1024 / 1024,
+                    free_mb=budget.free_bytes / 1024 / 1024,
+                )
+    except Exception as e:
         logger.exception("Unhandled exception in health check job")
+        try:
+            from flux.core.notifications import send_alert_db_error
+            await send_alert_db_error(f"Health check job crashed: {e}")
+        except Exception:
+            pass
 
 
 def _parse_cron(cron: str) -> dict:
