@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from flux.core import pipeline as pipeline_service
 from flux.db import get_db
 from flux.logger import get_logger
-from flux.models import Pipeline, Plugin
+from flux.models import Pipeline, Plugin, PostRecord
 
 logger = get_logger(__name__)
 
@@ -147,18 +147,87 @@ async def pipeline_stats(
     pipeline_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
-    """Pipeline statistics: stock levels, queue depth, etc."""
+    """Pipeline statistics: stock levels, production counts, schedules."""
     from flux.core.ingredients import count_ingredients
+    from flux.core.production import list_produced_content
+    from flux.scheduler import get_scheduler
 
     pipeline = await pipeline_service.get_pipeline(db, pipeline_id)
     if pipeline is None:
         logger.warning("Pipeline not found for stats: %s", pipeline_id)
         raise HTTPException(status_code=404, detail="Pipeline not found")
 
-    # Count ingredients by status
+    # Stock counts & Ingredient storage size
     approved = await count_ingredients(db, pipeline_id, status="approved")
     pending = await count_ingredients(db, pipeline_id, status="pending")
     rejected = await count_ingredients(db, pipeline_id, status="rejected")
+
+    from flux.models import Ingredient
+    from sqlalchemy import func
+    import os
+    
+    ing_size_res = await db.execute(
+        select(func.sum(Ingredient.file_size_bytes))
+        .where(Ingredient.pipeline_id == pipeline_id)
+    )
+    ingredient_bytes = ing_size_res.scalar_one_or_none() or 0
+
+    # Production counts by status
+    production_items = await list_produced_content(db, pipeline_id=pipeline_id, limit=1000)
+    production_counts = {
+        "ready": 0,
+        "rendered": 0,
+        "verse_unknown": 0,
+        "failed": 0,
+        "published": 0,
+        "rendering": 0,
+        "identifying": 0,
+    }
+    last_render_at = None
+    last_post_at = None
+    production_bytes = 0
+    
+    for item in production_items:
+        if item.status in production_counts:
+            production_counts[item.status] += 1
+        if item.rendered_at and (last_render_at is None or item.rendered_at > last_render_at):
+            last_render_at = item.rendered_at
+            
+        # Calculate production storage size
+        if item.file_path and os.path.exists(item.file_path):
+            try:
+                production_bytes += os.path.getsize(item.file_path)
+            except OSError:
+                pass
+        if item.thumbnail_path and os.path.exists(item.thumbnail_path):
+            try:
+                production_bytes += os.path.getsize(item.thumbnail_path)
+            except OSError:
+                pass
+
+    # Attached workers + next scheduled post
+    workers = await pipeline_service.get_pipeline_workers(db, pipeline_id)
+    next_scheduled_post = None
+    try:
+        scheduler = get_scheduler()
+        for worker in workers:
+            if worker.schedule_cron and worker.enabled:
+                job = scheduler.get_job(f"flux_worker_{worker.id}")
+                if job and job.next_run_time:
+                    job_time = job.next_run_time.replace(tzinfo=timezone.utc)
+                    if next_scheduled_post is None or job_time < next_scheduled_post:
+                        next_scheduled_post = job_time
+    except Exception:
+        pass
+
+    # Last post time from post records
+    from sqlalchemy import func
+    post_result = await db.execute(
+        select(func.max(PostRecord.created_at))
+        .join(ProducedContent)
+        .where(ProducedContent.pipeline_id == pipeline_id)
+    )
+    last_post_at = post_result.scalar_one_or_none()
 
     return {
         "pipeline_id": pipeline_id,
@@ -169,6 +238,17 @@ async def pipeline_stats(
             "pending": pending,
             "rejected": rejected,
         },
+        "production": production_counts,
+        "workers": len(workers),
+        "storage": {
+            "ingredients_bytes": ingredient_bytes,
+            "production_bytes": production_bytes,
+            "total_bytes": ingredient_bytes + production_bytes,
+            "total_mb": round((ingredient_bytes + production_bytes) / (1024 * 1024), 2),
+        },
+        "last_render_at": last_render_at.isoformat() if last_render_at else None,
+        "last_post_at": last_post_at.isoformat() if last_post_at else None,
+        "next_scheduled_post": next_scheduled_post.isoformat() if next_scheduled_post else None,
     }
 
 

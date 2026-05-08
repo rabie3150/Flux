@@ -346,7 +346,7 @@
 - [x] `pipeline_id` FK on ingredients — enforced
 - [x] `pipeline_id` FK on produced_content — enforced
 - [x] Many-to-many workers — `pipeline_workers` junction table
-- [ ] **Per-pipeline storage tracking** — not implemented
+- [x] **Per-pipeline storage tracking** — added `storage` dict to `/api/pipelines/{id}/stats`
 - [x] Global render lock — one FFmpeg at a time
 
 ---
@@ -419,8 +419,8 @@ These are explicitly out of scope for v1 but documented for future:
 | Infrastructure | 6 | 0 | 4 | 10 |
 | Monitoring & Alerting | 4 | 0 | 14 | 18 |
 | Security | 6 | 1 | 3 | 10 |
-| Data Strategy | 11 | 1 | 0 | 12 |
+| Data Strategy | 12 | 0 | 0 | 12 |
 | Testing | 6 | 0 | 9 | 15 |
-| **TOTAL** | **107** | **11** | **76** | **194** |
+| **TOTAL** | **108** | **10** | **76** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.
