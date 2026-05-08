@@ -49,6 +49,10 @@ async def dashboard(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     """Aggregated stats for the admin dashboard."""
     pipeline_count = await db.execute(select(func.count(Pipeline.id)))
     worker_count = await db.execute(select(func.count(PlatformWorker.id)))
+    
+    from flux.core.storage import get_storage_budget
+    storage_budget = get_storage_budget()
+    
     recent_events = await db.execute(
         select(ActivityLog)
         .order_by(ActivityLog.timestamp.desc())
@@ -58,6 +62,14 @@ async def dashboard(db: AsyncSession = Depends(get_db)) -> dict[str, Any]:
     return {
         "pipelines": pipeline_count.scalar_one(),
         "workers": worker_count.scalar_one(),
+        "storage": {
+            "total_budget_mb": round(storage_budget.total_budget_bytes / (1024 * 1024), 2),
+            "used_mb": round(storage_budget.used_bytes / (1024 * 1024), 2),
+            "free_mb": round(storage_budget.free_bytes / (1024 * 1024), 2),
+            "percent_used": round(storage_budget.percent_used, 1),
+            "is_warning": storage_budget.is_warning,
+            "is_critical": storage_budget.is_critical,
+        },
         "recent_events": [
             {
                 "timestamp": e.timestamp.isoformat() if e.timestamp else None,

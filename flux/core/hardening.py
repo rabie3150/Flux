@@ -301,18 +301,15 @@ async def rich_health_check() -> dict:
 
     # ── Storage ──
     try:
-        storage_path = Path(settings.storage_path)
-        if storage_path.exists():
-            usage = shutil.disk_usage(str(storage_path))
-            percent = (usage.used / usage.total) * 100
-            if percent > 95:
-                checks["storage"] = f"critical: {percent:.0f}%"
-            elif percent > 80:
-                checks["storage"] = f"warn: {percent:.0f}%"
-            else:
-                checks["storage"] = f"ok ({percent:.0f}%)"
+        from flux.core.storage import get_storage_budget
+        budget = get_storage_budget()
+        
+        if budget.is_critical:
+            checks["storage"] = f"critical: {budget.percent_used:.0f}% of budget used"
+        elif budget.is_warning:
+            checks["storage"] = f"warn: {budget.percent_used:.0f}% of budget used"
         else:
-            checks["storage"] = "warn: path does not exist"
+            checks["storage"] = f"ok ({budget.percent_used:.0f}% of budget used)"
     except Exception as exc:
         checks["storage"] = f"fail: {exc}"
 

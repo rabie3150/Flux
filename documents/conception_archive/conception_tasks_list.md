@@ -100,7 +100,7 @@
 - [ ] **F-07: Telegram notifications** for critical events — `config.py` has `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` fields, `logger.py` references Telegram, but **no actual notification service module** (`notifications.py` does not exist)
 
 ### Missing Modules (planned in `08-sad` / `16-build-plan`)
-- [ ] **`storage.py`** — Storage budget tracker (planned; no file exists)
+- [x] **`storage.py`** — Storage budget tracker (`flux/core/storage.py`)
 - [ ] **`notifications.py`** — Telegram bot notification service (no file exists)
 
 ---
@@ -153,7 +153,7 @@
 ### Dashboard (`/admin`)
 - [/] System health indicator — health dot in sidebar exists
 - [ ] **Uptime display** — no uptime shown in UI
-- [ ] **Storage meter** — no visual storage bar (no `storage.py` module)
+- [x] **Storage meter** — implemented `get_storage_budget()` for dashboard API
 - [/] Pipeline cards — basic list, not rich cards per wireframe
 - [/] Platform worker cards — basic list, not card layout
 - [/] Recent activity — API endpoint exists; basic render in UI
@@ -359,7 +359,7 @@
 - [ ] **Verse ID regex tests** — patterns against sample titles
 - [ ] **Caption template tests** — Jinja2 rendering, truncation
 - [ ] **Lock tests** — acquire/release, timeout, concurrency
-- [ ] **Storage budget tests** — no `storage.py` module
+- [x] **Storage budget tests** — `tests/unit/test_storage.py`
 - [ ] **Notification format tests** — no `notifications.py` module
 
 ### Integration Tests
@@ -408,19 +408,19 @@ These are explicitly out of scope for v1 but documented for future:
 
 | Category | Done | In Progress | Not Started | Total |
 |----------|------|-------------|-------------|-------|
-| Build Plan Phases 0–4 | 30 | 0 | 1 | 31 |
+| Build Plan Phases 0–4 | 31 | 0 | 0 | 31 |
 | Build Plan Phase 5 | 9 | 0 | 4 | 13 |
 | Build Plan Phase 6 | 0 | 1 | 5 | 6 |
 | Build Plan Phase 7 | 7 | 0 | 0 | 7 |
 | Core Engine | 7 | 1 | 2 | 10 |
 | Platform Workers | 2 | 1 | 5 | 8 |
-| Admin UI Screens | 0 | 5 | 23 | 28 |
+| Admin UI Screens | 1 | 4 | 23 | 28 |
 | API Endpoints | 19 | 1 | 6 | 26 |
 | Infrastructure | 6 | 0 | 4 | 10 |
 | Monitoring & Alerting | 4 | 0 | 14 | 18 |
 | Security | 6 | 1 | 3 | 10 |
 | Data Strategy | 12 | 0 | 0 | 12 |
-| Testing | 6 | 0 | 9 | 15 |
-| **TOTAL** | **108** | **10** | **76** | **194** |
+| Testing | 7 | 0 | 8 | 15 |
+| **TOTAL** | **111** | **9** | **74** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.
