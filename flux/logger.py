@@ -49,6 +49,8 @@ _REDACT_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     # Instagrapi specific tokens (sessionid, csrftoken)
     (re.compile(r'(sessionid["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9%_-]{20,})', re.IGNORECASE), r"\1<sessionid-redacted>"),
     (re.compile(r'(csrftoken["\']?\s*[:=]\s*["\']?)([a-zA-Z0-9_-]{20,})', re.IGNORECASE), r"\1<csrf-redacted>"),
+    # YouTube / Google OAuth Access Tokens (ya29.)
+    (re.compile(r'(ya29\.[a-zA-Z0-9_-]{30,})'), "<youtube-oauth-token-redacted>"),
     # JWT Tokens (ey...)
     (re.compile(r'(eyJ[a-zA-Z0-9_-]+\.eyJ[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+)'), "<jwt-redacted>"),
 ]
