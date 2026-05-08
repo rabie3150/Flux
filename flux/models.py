@@ -283,3 +283,17 @@ class VerseCache(Base):
 
     def __repr__(self) -> str:
         return f"<VerseCache {self.surah_number}:{self.ayah_number}>"
+
+
+class HealthSnapshot(Base):
+    """Historical record of system health for trend analysis."""
+
+    __tablename__ = "health_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    timestamp: Mapped[datetime] = mapped_column(DateTime, default=_now, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)  # healthy, degraded, unhealthy
+    metrics_json: Mapped[str] = mapped_column(Text, nullable=False)  # Full health check dict
+
+    def __repr__(self) -> str:
+        return f"<HealthSnapshot {self.status} at {self.timestamp}>"

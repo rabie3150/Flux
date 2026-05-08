@@ -25,6 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from flux.api.ingredients import router as ingredients_router
+from flux.api.metrics import router as metrics_router
 from flux.api.pipelines import router as pipelines_router
 from flux.api.posts import router as posts_router
 from flux.api.production import router as production_router
@@ -132,6 +133,7 @@ app.include_router(production_router)
 app.include_router(ingredients_router)
 app.include_router(workers_router)
 app.include_router(posts_router)
+app.include_router(metrics_router)
 
 # Static files for admin panel
 _admin_dir = Path(__file__).resolve().parent / "static" / "admin"

@@ -145,7 +145,21 @@ async def _run_health_check() -> None:
     """Wrapper for APScheduler health check job."""
     try:
         from flux.core.hardening import rich_health_check
+        from flux.db import AsyncSessionLocal
+        from flux.models import HealthSnapshot
+        import json
+        
         result = await rich_health_check()
+        
+        # Save snapshot
+        async with AsyncSessionLocal() as db:
+            snapshot = HealthSnapshot(
+                status=result["status"],
+                metrics_json=json.dumps(result["checks"]),
+            )
+            db.add(snapshot)
+            await db.commit()
+            
         if result["status"] != "healthy":
             logger.warning("Health check status: %s — %s", result["status"], result["checks"])
             
