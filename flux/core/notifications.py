@@ -23,12 +23,24 @@ from flux.models import ActivityLog, Ingredient, PlatformWorker, PostRecord, Pro
 
 logger = get_logger(__name__)
 
+# In-memory rate limiting to prevent notification floods
+_last_alert_times: dict[str, datetime] = {}
+COOLDOWN_MINUTES = 60
 
-async def _send_telegram_message(text: str) -> bool:
+
+async def _send_telegram_message(text: str, alert_type: str | None = None) -> bool:
     """Send an HTML-formatted message via Telegram Bot API."""
     if not settings.telegram_bot_token or not settings.telegram_chat_id:
         logger.debug("Skipping Telegram alert (credentials not configured): %s", text.split("\n")[0])
         return False
+        
+    if alert_type:
+        now = datetime.now(timezone.utc)
+        last_time = _last_alert_times.get(alert_type)
+        if last_time and (now - last_time).total_seconds() < (COOLDOWN_MINUTES * 60):
+            logger.debug("Skipping Telegram alert '%s' due to cooldown", alert_type)
+            return False
+        _last_alert_times[alert_type] = now
 
     url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"
     data = urllib.parse.urlencode({
@@ -62,7 +74,7 @@ async def send_alert_worker_failed(worker_name: str, platform: str, error_msg: s
         f"<b>Error:</b> <code>{error_msg}</code>\n"
         f"<i>Automated posting is likely halted for this worker.</i>"
     )
-    await _send_telegram_message(text)
+    await _send_telegram_message(text, alert_type=f"worker_failed_{worker_name}")
 
 
 async def send_alert_storage_critical(percent_used: float, used_mb: float, free_mb: float) -> None:
@@ -74,7 +86,7 @@ async def send_alert_storage_critical(percent_used: float, used_mb: float, free_
         f"<b>Free:</b> {free_mb:.1f} MB\n"
         f"<i>Please free up space or increase STORAGE_BUDGET_GB.</i>"
     )
-    await _send_telegram_message(text)
+    await _send_telegram_message(text, alert_type="storage_critical")
 
 
 async def send_alert_render_failed(pipeline_id: str, error_msg: str, consecutive_failures: int) -> None:
@@ -88,7 +100,7 @@ async def send_alert_render_failed(pipeline_id: str, error_msg: str, consecutive
         f"<b>Failures:</b> {consecutive_failures} consecutive\n"
         f"<b>Latest Error:</b> <code>{error_msg}</code>\n"
     )
-    await _send_telegram_message(text)
+    await _send_telegram_message(text, alert_type=f"render_failed_{pipeline_id}")
 
 
 async def send_alert_db_error(error_msg: str) -> None:
@@ -98,7 +110,7 @@ async def send_alert_db_error(error_msg: str) -> None:
         f"<b>Error:</b> <code>{error_msg}</code>\n"
         f"<i>The system may be unstable.</i>"
     )
-    await _send_telegram_message(text)
+    await _send_telegram_message(text, alert_type="db_error")
 
 
 async def send_alert_verse_backlog(backlog_count: int) -> None:
@@ -111,7 +123,7 @@ async def send_alert_verse_backlog(backlog_count: int) -> None:
         f"<b>Count:</b> {backlog_count} videos missing identification.\n"
         f"<i>Check AI quotas or regex patterns.</i>"
     )
-    await _send_telegram_message(text)
+    await _send_telegram_message(text, alert_type="verse_backlog")
 
 
 # ---------------------------------------------------------------------------
