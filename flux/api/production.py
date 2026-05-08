@@ -224,3 +224,45 @@ async def stream_produced_content(
         filename=Path(item.file_path).name,
         headers={"Accept-Ranges": "bytes"}
     )
+
+@router.post("/{pipeline_id}/production/{content_id}/requeue")
+async def requeue_produced_content(
+    pipeline_id: str,
+    content_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Requeue a produced content item that failed to render or post."""
+    item = await production_service.get_produced_content(db, content_id)
+    if item is None or item.pipeline_id != pipeline_id:
+        raise HTTPException(status_code=404, detail="Produced content not found")
+        
+    # Reset status to pending so it can be re-rendered or re-identified
+    item.status = "pending"
+    item.render_log = None
+    item.caption_text = None
+    item.content_meta_json = json.dumps({})
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return await _serialize_production(db, item)
+
+@router.delete("/{pipeline_id}/production/{content_id}")
+async def delete_produced_content(
+    pipeline_id: str,
+    content_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Delete a produced content item and its files."""
+    item = await production_service.get_produced_content(db, content_id)
+    if item is None or item.pipeline_id != pipeline_id:
+        raise HTTPException(status_code=404, detail="Produced content not found")
+        
+    if item.file_path and Path(item.file_path).exists():
+        Path(item.file_path).unlink()
+    if item.thumbnail_path and Path(item.thumbnail_path).exists():
+        Path(item.thumbnail_path).unlink()
+        
+    await db.delete(item)
+    await db.commit()
+    return {"deleted": True, "id": content_id}
+

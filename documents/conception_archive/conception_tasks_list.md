@@ -205,7 +205,7 @@
 - [x] `GET /api/settings` → `/api/system/settings`
 - [x] `PUT /api/settings` → `/api/system/settings/{key}`
 - [x] `GET /api/activity` → `/api/system/activity`
-- [ ] **`GET /api/metrics`** — Prometheus-compatible endpoint (doc `13-monitoring` §6.2; not implemented)
+- [x] **`GET /api/metrics`** — Prometheus-compatible endpoint
 
 ### Pipeline APIs
 - [x] `GET /api/pipelines`
@@ -214,21 +214,21 @@
 - [x] `PUT /api/pipelines/{id}`
 - [x] `DELETE /api/pipelines/{id}`
 - [x] `POST /api/pipelines/{id}/trigger`
-- [/] `GET /api/pipelines/{id}/stats` — endpoint exists but returns limited data
+- [x] `GET /api/pipelines/{id}/stats` — pipeline aggregate stats
 
 ### Ingredient APIs
 - [x] `GET /api/pipelines/{id}/ingredients`
 - [x] `POST /api/pipelines/{id}/ingredients/approve`
 - [x] `POST /api/pipelines/{id}/ingredients/reject`
 - [x] `DELETE /api/pipelines/{id}/ingredients`
-- [ ] **`GET /api/pipelines/{id}/ingredients/{iid}`** — individual ingredient detail not confirmed
+- [x] **`GET /api/pipelines/{id}/ingredients/{iid}`** — individual ingredient detail
 
 ### Production APIs
 - [x] `GET /api/pipelines/{id}/production`
 - [x] `GET /api/pipelines/{id}/production/{cid}`
 - [x] `POST /api/pipelines/{id}/production/{cid}/update_meta`
-- [ ] **`POST /api/pipelines/{id}/production/{cid}/requeue`** — not confirmed
-- [ ] **`DELETE /api/pipelines/{id}/production/{cid}`** — not confirmed
+- [x] **`POST /api/pipelines/{id}/production/{cid}/requeue`**
+- [x] **`DELETE /api/pipelines/{id}/production/{cid}`**
 
 ### Worker APIs
 - [x] `GET /api/workers`
@@ -236,12 +236,12 @@
 - [x] `GET /api/workers/{id}`
 - [x] `PUT /api/workers/{id}`
 - [x] `DELETE /api/workers/{id}`
-- [ ] **`POST /api/workers/{id}/test`** — test credentials endpoint not found
+- [x] **`POST /api/workers/{id}/test`** — test credentials endpoint
 - [x] `POST /api/workers/{id}/post_now` → mapped to `POST /api/workers/{id}/post`
 
 ### Post APIs
-- [ ] **`GET /api/posts`** — no posts router found
-- [ ] **`GET /api/posts/{id}`** — no post detail endpoint
+- [x] **`GET /api/posts`** — implemented in posts.py
+- [x] **`GET /api/posts/{id}`** — implemented in posts.py
 
 ### Remote API
 - [x] **`POST /api/system/remote`** — remote command endpoint (for GitHub Actions; doc `12-api-strategy` §5.2; stub implemented)
@@ -415,12 +415,12 @@ These are explicitly out of scope for v1 but documented for future:
 | Core Engine | 7 | 1 | 2 | 10 |
 | Platform Workers | 2 | 1 | 5 | 8 |
 | Admin UI Screens | 1 | 4 | 23 | 28 |
-| API Endpoints | 19 | 1 | 6 | 26 |
+| API Endpoints | 26 | 0 | 0 | 26 |
 | Infrastructure | 6 | 0 | 4 | 10 |
 | Monitoring & Alerting | 11 | 0 | 7 | 18 |
 | Security | 7 | 0 | 3 | 10 |
 | Data Strategy | 12 | 0 | 0 | 12 |
 | Testing | 12 | 0 | 3 | 15 |
-| **TOTAL** | **124** | **8** | **62** | **194** |
+| **TOTAL** | **132** | **7** | **55** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.

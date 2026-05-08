@@ -111,6 +111,28 @@ async def delete_ingredients(
     return {"deleted": count, "ingredient_ids": req.ingredient_ids}
 
 
+@router.get("/api/pipelines/{pipeline_id}/ingredients/{ingredient_id}")
+async def get_ingredient(
+    pipeline_id: str,
+    ingredient_id: str,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Get a single ingredient by ID."""
+    from sqlalchemy import select
+    result = await db.execute(
+        select(Ingredient).where(
+            Ingredient.id == ingredient_id,
+            Ingredient.pipeline_id == pipeline_id
+        )
+    )
+    ingredient = result.scalar_one_or_none()
+    if not ingredient:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Ingredient not found")
+    return _serialize_ingredient(ingredient)
+
+
+
 from fastapi.responses import FileResponse
 from pathlib import Path
 from fastapi import HTTPException
