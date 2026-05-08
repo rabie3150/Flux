@@ -18,6 +18,24 @@ export function shortDate(value) {
     return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+export function timeAgo(value) {
+    if (!value) return '-';
+    const s = Math.floor((new Date() - new Date(value)) / 1000);
+    if (s < 60) return 'Just now';
+    const m = Math.floor(s / 60);
+    if (m < 60) return `${m} min${m > 1 ? 's' : ''} ago`;
+    const h = Math.floor(m / 60);
+    if (h < 24) return `${h} hr${h > 1 ? 's' : ''} ago`;
+    const d = Math.floor(h / 24);
+    if (d < 7) return `${d} day${d > 1 ? 's' : ''} ago`;
+    return formatDate(value);
+}
+
+export function truncateId(id) {
+    if (!id || id.length < 12) return id;
+    return `${id.slice(0, 4)}...${id.slice(-4)}`;
+}
+
 export function formatDuration(seconds) {
     if (!seconds || seconds < 0) return '0s';
     if (seconds < 60) return `${seconds}s`;

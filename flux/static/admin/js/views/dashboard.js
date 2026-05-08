@@ -7,7 +7,6 @@ export function renderDashboard(state) {
     const workers = state.workers || [];
     const activity = (state.activity || []).slice(0, 8);
     const health = state.health || {};
-    const stats = state.stats || {};
 
     // Compute global alert counts
     let failedTotal = 0, unknownTotal = 0, readyTotal = 0;
@@ -22,6 +21,15 @@ export function renderDashboard(state) {
     if (failedTotal) alerts.push({ count: failedTotal, label: 'failed renders', target: 'production', tone: 'danger' });
     if (unknownTotal) alerts.push({ count: unknownTotal, label: 'need verse ID', target: 'production', tone: 'warn' });
 
+    // Find next scheduled post across all pipelines
+    let nextPost = null;
+    Object.values(state.pipelineData || {}).forEach((d) => {
+        if (d.stats?.next_scheduled_post) {
+            const t = new Date(d.stats.next_scheduled_post);
+            if (!nextPost || t < nextPost) nextPost = t;
+        }
+    });
+
     return `
         <section class="page-grid">
             ${alerts.length ? `<div class="span-12 alert-banner">${alerts.map((a) => actionCard(a.label, a.count, a.target, a.tone)).join('')}</div>` : ''}
@@ -30,28 +38,31 @@ export function renderDashboard(state) {
                 ${metric('Pipelines', pipelines.length)}
                 ${metric('Workers', workers.length)}
                 ${metric('Ready to Post', readyTotal)}
+                ${metric('Next Post', nextPost ? nextPost.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : '—')}
             </div>
             <section class="panel span-7">
                 <div class="panel-head"><div><h2>Pipelines</h2><p>Active automation streams.</p></div><button class="button compact" data-nav="pipelines">Manage</button></div>
-                <div class="stack-list">${pipelines.length ? pipelines.map(pipelineRow).join('') : emptyState('No pipelines yet.')}</div>
+                <div class="stack-list">${pipelines.length ? pipelines.map(pipelineRow).join('') : '<div class="empty-state">No pipelines yet. <button class="button compact" style="margin-left:8px;" data-action="create-pipeline">Create Pipeline</button></div>'}</div>
             </section>
             <section class="panel span-5">
                 <div class="panel-head"><div><h2>Workers</h2><p>Connected publishing destinations.</p></div></div>
-                <div class="compact-grid">${workers.length ? workers.slice(0, 4).map(workerCard).join('') : emptyState('No workers configured.')}</div>
+                <div class="compact-grid">${workers.length ? workers.slice(0, 4).map(workerCard).join('') : '<div class="empty-state">No workers configured. <button class="button compact" style="margin-left:8px;" data-action="create-worker">Connect Worker</button></div>'}</div>
             </section>
             <section class="panel span-12">
                 <div class="panel-head"><div><h2>Recent Activity</h2><p>Last system events.</p></div><button class="button compact" data-nav="activity">Open</button></div>
-                ${activityTable(activity)}
+                ${activityTable(activity, pipelines)}
             </section>
         </section>`;
 }
 
 function formatUptime(sec) {
-    if (!sec) return '-';
+    if (!sec || sec < 60) return 'Just started';
     const d = Math.floor(sec / 86400);
     const h = Math.floor((sec % 86400) / 3600);
+    const m = Math.floor((sec % 3600) / 60);
     if (d) return `${d}d ${h}h`;
-    return `${h}h`;
+    if (h) return `${h}h ${m}m`;
+    return `${m}m`;
 }
 
 function metric(label, value) {
@@ -74,10 +85,11 @@ function workerCard(w) {
     </article>`;
 }
 
-function activityTable(events) {
+function activityTable(events, pipelines = []) {
+    const nameMap = Object.fromEntries(pipelines.map((p) => [p.id, p.name]));
     if (!events.length) return emptyState('No activity recorded yet.');
     return `<div class="table-wrap"><table><thead><tr><th>Type</th><th>Time</th><th>Event</th><th>Pipeline</th></tr></thead><tbody>
-        ${events.map((e) => `<tr><td><span class="level-dot ${escapeHtml(e.level)}"></span></td><td>${formatDate(e.timestamp)}</td><td>${escapeHtml(e.message || e.event_type)}</td><td><span class="platform-badge">${escapeHtml(e.pipeline_id || 'System')}</span></td></tr>`).join('')}
+        ${events.map((e) => `<tr><td><span class="level-dot ${escapeHtml(e.level)}"></span></td><td>${formatDate(e.timestamp)}</td><td>${escapeHtml(e.message || e.event_type)}</td><td><span class="platform-badge">${escapeHtml(nameMap[e.pipeline_id] || e.pipeline_id || 'System')}</span></td></tr>`).join('')}
     </tbody></table></div>`;
 }
 

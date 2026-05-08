@@ -10,21 +10,21 @@ export function renderPosts(state) {
 
     return `
         <section class="page-grid">
-            <section class="view-hero span-12">
-                <div><h2>Post Log</h2><p>History of all published content.</p></div>
-                <button class="button ghost" data-action="export-posts">Export CSV</button>
-            </section>
             <section class="panel span-12">
+                <div class="panel-head">
+                    <p>History of all published content.</p>
+                </div>
                 <div class="toolbar">
-                    <div class="filter-group">
+                    <div class="filter-group" style="display:flex; gap:12px; flex-wrap:wrap;">
                         <select data-filter="platform">${option('', 'All Platforms', filters.platform)}${platforms.map((p) => option(p, platformLabel(p), filters.platform)).join('')}</select>
                         <select data-filter="status">${option('', 'All Statuses', filters.status)}${option('published', 'Published', filters.status)}${option('failed', 'Failed', filters.status)}${option('pending', 'Pending', filters.status)}</select>
                         <select data-filter="pipeline_id">${option('', 'All Pipelines', filters.pipeline_id)}${pipelines.map((p) => option(p.id, p.name, filters.pipeline_id)).join('')}</select>
                     </div>
+                    <button class="button ghost" data-action="export-posts">Export CSV</button>
                 </div>
                 <div class="table-wrap">
-                    <table><thead><tr><th>Verse</th><th>Platform</th><th>Worker</th><th>Posted</th><th>Status</th></tr></thead><tbody>
-                        ${posts.length ? posts.map(postRow).join('') : `<tr><td colspan="5">${emptyState('No posts yet.')}</td></tr>`}
+                    <table><thead><tr><th>Title / Content</th><th>Platform</th><th>Worker</th><th>Posted</th><th>Status</th></tr></thead><tbody>
+                        ${posts.length ? posts.map(postRow).join('') : `<tr><td colspan="5" style="border:none;"><div class="empty-state" style="text-align:center;">No posts yet.</div></td></tr>`}
                     </tbody></table>
                 </div>
             </section>
@@ -35,7 +35,7 @@ function postRow(post) {
     const status = post.status || 'unknown';
     const tone = status === 'published' ? 'ok' : status === 'failed' ? 'failed' : 'pending';
     return `<tr data-post-id="${post.id}">
-        <td><strong>${escapeHtml(post.verse_label || '-')}</strong><small>${escapeHtml(post.pipeline_name || '')}</small></td>
+        <td><strong>${escapeHtml(post.verse_label || '-')}</strong><small>${escapeHtml(post.pipeline_name ? ' · ' + post.pipeline_name : '')}</small></td>
         <td>${escapeHtml(platformLabel(post.platform))}</td>
         <td>${escapeHtml(post.worker_name || post.worker_id || '-')}</td>
         <td>${formatDate(post.published_at || post.created_at)}</td>

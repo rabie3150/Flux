@@ -1,6 +1,6 @@
 /** Flux Admin — Activity Log View */
 
-import { escapeHtml, formatDate } from '../utils.js';
+import { escapeHtml, timeAgo } from '../utils.js';
 
 export function renderActivity(state) {
     const events = state.activity || [];
@@ -14,12 +14,20 @@ export function renderActivity(state) {
 }
 
 function activityList(events) {
-    return `<div class="activity-list">${events.map((e) => `
+    return `<div class="activity-list">${events.map((e) => {
+        let tone = e.level;
+        const ev = e.event_type.toLowerCase();
+        if (ev.includes('error') || ev.includes('failed') || ev.includes('reject')) tone = 'error';
+        else if (ev.includes('trigger') || ev.includes('fetch') || ev.includes('render')) tone = 'info';
+        else if (ev.includes('approve') || ev.includes('publish') || ev.includes('success')) tone = 'info'; // 'ok' implies success, but blue/info is better for system events.
+        
+        return `
         <article class="activity-item">
-            <span class="level-dot ${escapeHtml(e.level)}"></span>
-            <span><strong>${escapeHtml(e.event_type)}</strong><small>${escapeHtml(e.message)}</small></span>
-            <time>${formatDate(e.timestamp)}</time>
-        </article>`).join('')}</div>`;
+            <span class="level-dot ${escapeHtml(tone)}"></span>
+            <span style="overflow:hidden;"><strong style="font-size:14px; color:var(--color-text);">${escapeHtml(e.event_type)}</strong><small style="display:block; overflow-wrap:anywhere;">${escapeHtml(e.message)}</small></span>
+            <time>${timeAgo(e.timestamp)}</time>
+        </article>`;
+    }).join('')}</div>`;
 }
 
 function emptyState(text) {

@@ -13,15 +13,20 @@ function pipelineList(state) {
     return `
         <section class="page-grid">
             <section class="panel span-12">
-                <div class="panel-head"><div><h2>Pipelines</h2><p>Select a pipeline to manage ingredients, production, and workers.</p></div></div>
+                <div class="panel-head">
+                    <p>Manage automation streams.</p>
+                    <button class="button primary" data-action="create-pipeline">+ Create Pipeline</button>
+                </div>
+                ${pipelines.length ? `
                 <div class="table-wrap"><table><thead><tr><th>Name</th><th>Plugin</th><th>Status</th><th>Created</th><th></th></tr></thead><tbody>
                     ${pipelines.map((p) => `<tr>
-                        <td>${escapeHtml(p.name)}</td><td>${escapeHtml(p.plugin_id)}</td>
+                        <td><strong>${escapeHtml(p.name)}</strong></td><td>${escapeHtml(p.plugin_id)}</td>
                         <td>${statusPill(p.enabled ? 'Active' : 'Paused', p.enabled ? 'ok' : 'off')}</td>
                         <td>${formatDate(p.created_at)}</td>
-                        <td class="table-actions"><button class="button compact" data-open-pipeline="${p.id}">Open</button></td>
+                        <td class="table-actions icon-actions"><button class="button compact ghost" data-open-pipeline="${p.id}">Open</button></td>
                     </tr>`).join('')}
                 </tbody></table></div>
+                ` : '<div class="empty-state wide">No pipelines created yet. <button class="button compact" style="margin-left:8px;" data-action="create-pipeline">Create Pipeline</button></div>'}
             </section>
         </section>`;
 }
@@ -38,8 +43,8 @@ function workbench(state) {
                 <div class="workbench-head">
                     <div><p class="eyebrow">Pipeline</p><h2>${escapeHtml(pipeline.name)} ${statusPill(pipeline.enabled ? 'Active' : 'Paused', pipeline.enabled ? 'ok' : 'off')}</h2></div>
                     <div class="card-actions">
+                        <button class="button ghost" data-action="back-pipelines">← Back</button>
                         <button class="button ghost" data-toggle-pipeline="${pipeline.id}">${pipeline.enabled ? 'Pause' : 'Resume'}</button>
-                        ${tab !== 'production' ? `<button class="button primary" data-action="render-next" ${state.operation ? 'disabled' : ''}>Run Pipeline</button>` : ''}
                     </div>
                 </div>
                 <div class="workbench-tabs"><div class="segmented">${['overview', 'ingredients', 'production', 'workers', 'settings'].map((t) => tabButton(t, tab, 'data-pipeline-tab')).join('')}</div></div>
@@ -162,13 +167,16 @@ function ingredientCard(item, isSelected) {
 
 function productionRow(item) {
     const meta = item.content_meta || {};
-    const label = meta.surah ? `${meta.surah}:${meta.ayah}${meta.ayah_end && meta.ayah_end > meta.ayah ? `-${meta.ayah_end}` : ''}` : 'Unknown';
+    const ayah = meta.ayah || meta.ayah === 0 ? meta.ayah : null;
+    const label = meta.surah ? `${meta.surah}:${ayah ?? '—'}${meta.ayah_end && meta.ayah_end > (ayah || 0) ? `-${meta.ayah_end}` : ''}` : 'Unknown';
+    const canPost = item.status === 'ready';
     return `<tr>
         <td>${statusPill(statusLabel(item.status), item.status)}</td>
         <td><strong>${escapeHtml(label)}</strong><small>${escapeHtml(meta.surah_name || '')}</small></td>
         <td>${shortDate(item.rendered_at)}</td>
         <td class="table-actions icon-actions">
             <button class="button compact table-icon" title="Preview" data-preview-production="${item.id}">▶</button>
+            ${canPost ? `<button class="button compact table-icon" title="Post Now" data-post-production="${item.id}">➤</button>` : ''}
             <button class="button compact ghost table-icon" title="Assign verse" data-identify-production="${item.id}">#</button>
             <button class="button compact ghost table-icon" title="Redo AI" data-redo-ai="${item.id}">↻</button>
         </td>
@@ -200,6 +208,19 @@ function tabButton(tab, active, attr) {
 
 function option(value, label, selected) {
     return `<option value="${escapeHtml(value)}" ${value === selected ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+}
+
+export function pipelineModal(plugins = []) {
+    return `
+        <form class="form-stack" id="pipeline-form">
+            <label><span>Pipeline name</span><input name="name" required placeholder="e.g. Quran Shorts"></label>
+            <label><span>Plugin</span>
+                <select name="plugin_id" required>
+                    ${plugins.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.display_name || p.name)}</option>`).join('')}
+                </select>
+            </label>
+            <button class="button primary" type="submit">Create Pipeline</button>
+        </form>`;
 }
 
 function emptyState(text, wide = false) {

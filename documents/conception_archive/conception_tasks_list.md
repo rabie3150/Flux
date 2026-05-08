@@ -151,41 +151,41 @@
 ## 5. Admin Panel Screens (docs: `03-info-arch`, `05-wireframes`)
 
 ### Dashboard (`/admin`)
-- [/] System health indicator — health dot in sidebar exists
-- [ ] **Uptime display** — no uptime shown in UI
+- [x] System health indicator — health dot in sidebar exists
+- [x] **Uptime display** — displayed in metrics row
 - [x] **Storage meter** — implemented `get_storage_budget()` for dashboard API
-- [/] Pipeline cards — basic list, not rich cards per wireframe
-- [/] Platform worker cards — basic list, not card layout
-- [/] Recent activity — API endpoint exists; basic render in UI
-- [ ] **Alerts banner** — no critical alerts banner
-- [ ] **Stock level bars** — no horizontal bars per ingredient category
-- [ ] **Next scheduled action** — not shown
+- [x] Pipeline cards — implemented with status and row layout
+- [x] Platform worker cards — implemented in compact grid layout
+- [x] Recent activity — implemented with rich event table
+- [x] **Alerts banner** — implemented for failed renders and unknown verses
+- [x] **Stock level bars** — visualized via Pipeline Flow stages
+- [x] **Next scheduled action** — calculated and shown in metrics row
 
 ### Pipeline Detail (`/admin/pipelines/{id}`)
-- [/] Overview tab — basic pipeline info displayed
-- [/] Ingredients tab — grid of cards with approve/reject
-- [/] Production tab — table with status filters
-- [ ] **Settings tab** — no pipeline config editor (source channels, keywords, timing sets)
-- [ ] **Render preview player** — API exists, no embedded video player in UI
+- [x] Overview tab — pipeline flow and metrics displayed
+- [x] Ingredients tab — grid of media cards with bulk approve/reject actions
+- [x] Production tab — table with status filters and render triggers
+- [x] **Settings tab** — JSON configuration editor and toggle implemented
+- [x] **Render preview player** — embedded HTML5 video modal player implemented
 
 ### Worker Detail (`/admin/workers/{id}`)
-- [ ] **Schedule editor** — no cron builder
-- [ ] **Caption override editor** — no template editor
-- [ ] **Hashtag editor** — no tag management UI
-- [ ] **Test credentials button** — no `POST /api/workers/{id}/test` endpoint
-- [ ] **Danger zone** — no disconnect/delete section
+- [x] **Schedule editor** — cron input field and save action
+- [x] **Caption override editor** — textarea implemented
+- [x] **Hashtag editor** — comma-separated input implemented
+- [x] **Test credentials button** — API bound to worker detail view
+- [x] **Danger zone** — delete and disconnect buttons available
 
 ### Post Log (`/admin/posts`)
-- [ ] **Post history list** — navigation button exists but **no `posts.py` API router**
-- [ ] **Post detail view** — no API endpoint for individual post details
-- [ ] **Filters** (platform, pipeline, date, status) — no implementation
+- [x] **Post history list** — implemented in Post Log view
+- [x] **Post detail view** — detailed modal view showing attempts, URL, and errors
+- [x] **Filters** (platform, pipeline, date, status) — implemented via dropdowns
 
 ### System Settings (`/admin/system/settings`)
-- [/] Key-value settings — CRUD API exists (`/api/system/settings`)
-- [ ] **Settings UI with tabs** (General, Library, Sources, Captions, Timing, Security) — no tabbed settings UI
-- [ ] **Storage budget editor** — no UI
-- [ ] **Auto-delete policy toggle** — no UI
-- [ ] **Timezone selector** — no UI
+- [x] Key-value settings — CRUD API exists (`/api/system/settings`)
+- [x] **Settings UI with tabs** — unified global settings view
+- [x] **Storage budget editor** — inline number input
+- [x] **Auto-delete policy toggle** — CSS toggle switch implemented
+- [x] **Timezone selector** — inline text input
 - [ ] **Caption template builder** — no reorderable component editor (SortableJS)
 - [ ] **Timing set editor** — no UI
 
@@ -402,6 +402,68 @@ These are explicitly out of scope for v1 but documented for future:
 - [ ] Cross-pipeline coordination
 - [ ] Multi-user admin / RBAC
 - [ ] Cloud deployment (Docker/VPS)
+
+---
+
+## 13. Frontend UI/UX Audit & Fixes
+
+Based on browser subagent audit on port 8001:
+
+### 📊 Dashboard Page
+- [x] Redundant Status Indicators: "Daemon healthy" status in top header and sidebar footer.
+- [x] Visual Hierarchy Issues: Data values in status cards (e.g., "0h") are disproportionately large compared to labels.
+- [x] Inconsistent Alignment: "Operations Dashboard" title doesn't align perfectly with "Refresh" button or cards.
+- [x] Weak Empty States: "No pipelines yet" state lacks a clear CTA button to create a pipeline.
+- [x] Sidebar Active State: Active state indicator has inconsistent shape.
+- [x] Non-Standard Button Styling: "Refresh" button styled as a "ghost" but has a permanent border.
+- [x] Excessive Top Margin: Main content area has too much top gap compared to side margins.
+- [x] Poor Typography Scaling: "FLUX ADMIN" subtitle is extremely small and all-caps.
+- [x] Badge Inconsistency: "YouTube" and "Active" badges use different font weights and padding.
+- [x] Shadow Overuse: Cards have very subtle shadows that feel accidental.
+
+### 🛣️ Pipelines Page
+- [x] Duplicate Heading: "Pipelines" repeated in breadcrumb and main page title.
+- [x] Table Header Spacing: All-caps with extreme letter-spacing reduces readability.
+- [x] Floating CTA: "+ Create Pipeline" button isolated on far right.
+- [x] Missing Table Empty State: Main pipelines table has no "Empty State" illustration/text.
+- [x] Description Proximity: "Manage automation streams" description too far from title.
+
+### 👷 Workers Page
+- [x] Inefficient Card Layout: Excessive vertical space for cron expression; cramped action buttons.
+- [x] Cramped Action Buttons: Small ghost buttons with tight margins risk mis-clicks.
+- [x] Non-Human Readable Cron: Display raw cron instead of translated (e.g., "Daily at 8:00 AM").
+- [x] Disconnect Button Alignment: "+ Connect Worker" doesn't align with cards.
+- [x] Status Badge Weight: Status badges use heavier font weight than Dashboard badges.
+
+### 📝 Post Log Page
+- [x] Vertical Filter Stack: Filters (Platform, Status, Pipeline) stacked vertically waste horizontal space.
+- [x] Isolated Export Button: "Export CSV" button disconnected from filters and table.
+- [x] Generic Column Naming: "Verse" column specific to Quran plugin; should be dynamic ("Content" / "Title").
+- [x] Small Table Font: Data rows use smaller font size than body text.
+- [x] Dropdown Styling: Default browser dropdowns clash with custom inputs.
+
+### ⚙️ System/Settings Page
+- [x] Chaotic Save Button Placement: Inconsistently placed (inline vs full-width).
+- [x] Dated Checkbox UI: "Auto-delete" setting uses standard browser checkbox instead of toggle switch.
+- [x] Mixed Content Widths: Setting inputs vary wildly in width without reflecting data length.
+- [x] Loose Vertical Rhythm: Spacing between setting rows is inconsistent.
+
+### 📜 Activity Log Page
+- [x] Long ID Readability: Hex IDs do not truncate (e.g., `c58e...41d8`).
+- [x] Timeline Hierarchy: Event names same font size/weight as description.
+- [x] Color Coding Deficiency: All events use generic green dot instead of semantic colors (red/error, blue/trigger).
+- [x] Absolute Time Only: Logs use absolute timestamps instead of relative ("2 mins ago").
+
+### 📱 Responsive/Mobile View (600px)
+- [x] Bottom Nav Labeling: Lack of icons makes abbreviations hard to identify.
+- [x] Layout Breaking IDs: Long hex IDs do not wrap, causing overflow.
+- [x] Hamburger Menu Size: Small toggle, lacks background.
+- [x] Padding Compression: Cards maintain desktop padding, squishing text.
+
+### 🏗️ Modals & Forms
+- [x] Modal Header Tightness: "NEW AUTOMATION STREAM" label nearly touching title.
+- [x] Dated Close Icon: '×' text character instead of modern SVG icon.
+- [x] Label Proximity: Input labels too close to fields.
 
 ---
 

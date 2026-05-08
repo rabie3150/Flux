@@ -32,6 +32,14 @@
         padding: 18px;
     }
 
+    .panel {
+        padding: 16px;
+    }
+
+    .worker-card, .metric, .worker-tile, .row-card {
+        padding: 14px;
+    }
+
     .span-4,
     .span-5,
     .span-7,

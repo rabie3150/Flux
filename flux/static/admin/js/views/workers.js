@@ -51,12 +51,12 @@ export function renderWorkers(state) {
 
     return `
         <section class="page-grid">
-            <section class="view-hero span-12">
-                <div><h2>Platform Workers</h2><p>Manage publishing destinations.</p></div>
-                <button class="button primary" data-action="create-worker">+ Connect Worker</button>
-            </section>
-            <section class="span-12">
-                <div class="worker-grid worker-grid-wide">${workers.map(workerCard).join('')}</div>
+            <section class="panel span-12">
+                <div class="panel-head">
+                    <p>Manage publishing destinations.</p>
+                    <button class="button primary" data-action="create-worker">+ Connect Worker</button>
+                </div>
+                <div class="worker-grid worker-grid-wide">${workers.length ? workers.map(workerCard).join('') : '<div class="empty-state wide">No workers configured yet. <button class="button compact" style="margin-left:8px;" data-action="create-worker">Connect Worker</button></div>'}</div>
             </section>
             ${selected ? workerDetail(state) : ''}
         </section>`;
@@ -65,12 +65,12 @@ export function renderWorkers(state) {
 function workerCard(w) {
     const hasError = w.last_error_at;
     return `<article class="worker-card">
-        <div><span class="platform-badge">${platformLabel(w.platform)}</span><h3>${escapeHtml(w.display_name)}</h3><p>${escapeHtml(w.schedule_cron || 'Manual only')}</p></div>
+        <div><span class="platform-badge">${platformLabel(w.platform)}</span><h3>${escapeHtml(w.display_name)}</h3><p>${escapeHtml(cronText(w.schedule_cron))}</p></div>
         <div>${statusPill(w.enabled ? 'Active' : 'Paused', w.enabled ? 'ok' : 'off')}${hasError ? ' ' + statusPill('Error', 'failed') : ''}</div>
-        <div class="card-actions">
-            <button class="button compact" data-open-worker="${w.id}">Open</button>
+        <div class="card-actions" style="margin-top:auto; padding-top:14px; border-top:1px solid var(--color-border);">
+            <button class="button compact ghost" data-open-worker="${w.id}">Open</button>
             <button class="button compact ghost" data-toggle-worker="${w.id}">${w.enabled ? 'Pause' : 'Resume'}</button>
-            <button class="button compact ghost danger-text" data-delete-worker="${w.id}">Delete</button>
+            <button class="button compact ghost danger-text" data-delete-worker="${w.id}" style="margin-left:auto;">Delete</button>
         </div>
     </article>`;
 }
@@ -83,7 +83,10 @@ function workerDetail(state) {
         <section class="panel span-12">
             <div class="workbench-head">
                 <div><p class="eyebrow">Worker Detail</p><h2>${escapeHtml(w.display_name)}</h2></div>
-                <div class="segmented">${['overview', 'schedule', 'caption', 'pipelines'].map((t) => tabButton(t, tab, 'data-worker-tab')).join('')}</div>
+                <div class="card-actions">
+                    <button class="button ghost" data-action="back-workers">← Back</button>
+                    <div class="segmented">${['overview', 'schedule', 'caption', 'pipelines'].map((t) => tabButton(t, tab, 'data-worker-tab')).join('')}</div>
+                </div>
             </div>
             ${tab === 'overview' ? workerOverview(w, state) : ''}
             ${tab === 'schedule' ? workerSchedule(w) : ''}
@@ -97,7 +100,7 @@ function workerOverview(w, state) {
     return `
         <div class="overview-grid">
             ${metric('Platform', platformLabel(w.platform))}
-            ${metric('Strategy', w.connection_strategy)}
+            ${metric('Strategy', strategyLabel(w.connection_strategy))}
             ${metric('Status', w.enabled ? 'Active' : 'Paused')}
             ${metric('Last Post', formatDate(w.last_posted_at))}
             <div class="span-all" style="margin-top:0.5rem;">
@@ -121,7 +124,8 @@ function workerSchedule(w) {
 }
 
 function workerCaption(w) {
-    const hashtags = JSON.parse(w.hashtags_json || '[]');
+    let hashtags = [];
+    try { hashtags = JSON.parse(w.hashtags_json || '[]'); } catch {}
     return `
         <div class="settings-grid">
             <label><span>Caption template override</span><textarea id="worker-caption" rows="4">${escapeHtml(w.caption_template_override || '')}</textarea></label>
@@ -190,6 +194,26 @@ export function refreshCredentialFields(platform, strategy, credentials = {}) {
             if (opt.value === 'unofficial') opt.style.display = CREDENTIAL_SCHEMAS[platform]?.unofficial ? '' : 'none';
         });
     }
+}
+
+function cronText(cron) {
+    if (!cron) return 'Manual only';
+    const parts = cron.split(' ');
+    if (parts.length !== 5) return cron;
+    const [min, hour, , , days] = parts;
+    if (min === '0' && hour === '*' && days === '*') return 'Every hour';
+    if (min === '0' && days === '*') {
+        const h = parseInt(hour, 10);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        const hr12 = h % 12 || 12;
+        return `Daily at ${hr12}:00 ${ampm}`;
+    }
+    if (min === '0' && hour === '0' && days === '0') return 'Weekly (Sun midnight)';
+    return `Cron: ${cron}`;
+}
+
+function strategyLabel(s) {
+    return { official: 'Official API', unofficial: 'Unofficial', third_party: 'Third-party' }[s] || s;
 }
 
 function metric(label, value) {

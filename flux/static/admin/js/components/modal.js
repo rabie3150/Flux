@@ -12,7 +12,9 @@ function ensureModal() {
     backdrop.innerHTML = `
         <section class="modal-panel">
             <header><div><p class="eyebrow" id="modal-eyebrow"></p><h2 id="modal-title"></h2></div>
-            <button class="icon-button" id="modal-close" title="Close">×</button></header>
+            <button class="icon-button ghost" id="modal-close" title="Close" style="border:none; padding:8px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button></header>
             <div class="modal-body" id="modal-body"></div>
         </section>`;
     document.body.appendChild(backdrop);

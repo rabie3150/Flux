@@ -3,15 +3,14 @@
 import { createStore } from './state.js';
 import { api, optionalApi } from './api.js';
 import { toast } from './components/toast.js';
-import { openModal, closeModal, modalBody } from './components/modal.js';
-import { renderOperation } from './components/operation.js';
+import { openModal, closeModal } from './components/modal.js';
 import { renderDashboard } from './views/dashboard.js';
-import { renderPipelines } from './views/pipelines.js';
+import { renderPipelines, pipelineModal } from './views/pipelines.js';
 import { renderWorkers, workerModal, refreshCredentialFields } from './views/workers.js';
 import { renderPosts } from './views/posts.js';
 import { renderSystem } from './views/system.js';
 import { renderActivity } from './views/activity.js';
-import { escapeHtml, formatDuration } from './utils.js';
+import { escapeHtml, escapeAttr, formatDate, formatDuration, platformLabel } from './utils.js';
 
 // ── Global State ───────────────────────────────────────────────────────────
 const store = createStore({
@@ -22,6 +21,7 @@ const store = createStore({
     workers: [],
     posts: [],
     activity: [],
+    plugins: [],
     settings: {},
     pipelineData: {},
     postFilters: {},
@@ -74,7 +74,7 @@ function bindShell() {
 // ── Data Loading ───────────────────────────────────────────────────────────
 async function refreshAll() {
     try {
-        await Promise.all([loadHealth(), loadDashboard(), loadWorkers(), loadActivity(), loadSettings()]);
+        await Promise.all([loadHealth(), loadDashboard(), loadWorkers(), loadActivity(), loadSettings(), loadPlugins()]);
         await loadPipelines();
         await Promise.all([loadAllPipelineData(), loadPosts()]);
         if (!store.get('selectedPipelineId') && store.get('pipelines')[0]) {
@@ -104,6 +104,7 @@ async function loadPipelines() { store.set('pipelines', await api('/api/pipeline
 async function loadWorkers() { store.set('workers', await api('/api/workers')); }
 async function loadActivity() { const d = await api('/api/system/activity?limit=60'); store.set('activity', d.events || []); }
 async function loadSettings() { store.set('settings', await api('/api/system/settings')); }
+async function loadPlugins() { store.set('plugins', await api('/api/system/plugins')); }
 
 async function loadPosts() {
     const filters = store.get('postFilters');
@@ -143,7 +144,6 @@ function render() {
     els.pageEyebrow.textContent = pipeline && view === 'pipelines' ? 'Pipeline workbench' : 'Flux admin';
     els.pageTitle.textContent = pageTitle(state);
     els.topbarActions.innerHTML = `
-        <span class="topbar-status"><span class="health-dot ${state.health.status || 'unknown'}"></span>${state.health.status === 'healthy' ? 'Daemon healthy' : 'Status: Check'}</span>
         <button class="button ghost" data-action="refresh">Refresh</button>
         ${pipeline && view === 'pipelines' ? `<button class="button primary" data-action="render-next" ${state.operation ? 'disabled' : ''}>Run Pipeline</button>` : ''}`;
 
@@ -188,12 +188,15 @@ function bindViewEvents() {
 
     // Pipelines
     els.view.querySelectorAll('[data-open-pipeline]').forEach((b) => b.addEventListener('click', () => { store.set('selectedPipelineId', b.dataset.openPipeline); store.set('pipelineTab', 'overview'); render(); }));
+    els.view.querySelectorAll('[data-action="create-pipeline"]').forEach((b) => b.addEventListener('click', openCreatePipelineModal));
+    els.view.querySelectorAll('[data-action="back-pipelines"]').forEach((b) => b.addEventListener('click', () => { store.set('selectedPipelineId', null); render(); }));
     els.view.querySelectorAll('[data-toggle-pipeline]').forEach((b) => b.addEventListener('click', () => togglePipeline(b.dataset.togglePipeline)));
     els.view.querySelectorAll('[data-pipeline-tab]').forEach((b) => b.addEventListener('click', () => { store.set('pipelineTab', b.dataset.pipelineTab); render(); }));
     els.view.querySelectorAll('[data-delete-pipeline]').forEach((b) => b.addEventListener('click', () => deletePipeline(b.dataset.deletePipeline)));
 
     // Workers
     els.view.querySelectorAll('[data-open-worker]').forEach((b) => b.addEventListener('click', () => { store.set('selectedWorkerId', b.dataset.openWorker); store.set('workerTab', 'overview'); render(); }));
+    els.view.querySelector('[data-action="back-workers"]')?.addEventListener('click', () => { store.set('selectedWorkerId', null); render(); });
     els.view.querySelectorAll('[data-toggle-worker]').forEach((b) => b.addEventListener('click', () => toggleWorker(b.dataset.toggleWorker)));
     els.view.querySelectorAll('[data-delete-worker]').forEach((b) => b.addEventListener('click', () => deleteWorker(b.dataset.deleteWorker)));
     els.view.querySelectorAll('[data-worker-tab]').forEach((b) => b.addEventListener('click', () => { store.set('workerTab', b.dataset.workerTab); render(); }));
@@ -250,10 +253,12 @@ function bindViewEvents() {
         previewIngredient(b.dataset.previewIngredient);
     }));
     els.view.querySelectorAll('[data-preview-production]').forEach((b) => b.addEventListener('click', () => previewProduction(b.dataset.previewProduction)));
+    els.view.querySelectorAll('[data-post-production]').forEach((b) => b.addEventListener('click', () => postProductionItem(b.dataset.postProduction)));
     els.view.querySelectorAll('[data-identify-production]').forEach((b) => b.addEventListener('click', () => openIdentifyModal(b.dataset.identifyProduction)));
     els.view.querySelectorAll('[data-redo-ai]').forEach((b) => b.addEventListener('click', () => redoAi(b.dataset.redoAi)));
 
-    // Posts export
+    // Posts
+    els.view.querySelectorAll('[data-post-id]').forEach((row) => row.addEventListener('click', () => openPostDetail(row.dataset.postId)));
     els.view.querySelector('[data-action="export-posts"]')?.addEventListener('click', exportPosts);
 }
 
@@ -287,6 +292,26 @@ async function savePipeline() {
     const enabled = document.getElementById('pipeline-enabled')?.checked;
     await api(`/api/pipelines/${id}`, { method: 'PUT', body: JSON.stringify({ name, enabled }) });
     toast('Pipeline saved.', 'success');
+    await refreshAll();
+}
+
+function openCreatePipelineModal() {
+    openModal({ title: 'Create Pipeline', eyebrow: 'New automation stream', body: pipelineModal(store.get('plugins')) });
+    document.getElementById('pipeline-form').addEventListener('submit', submitPipeline);
+}
+
+async function submitPipeline(event) {
+    event.preventDefault();
+    const fd = new FormData(event.target);
+    const payload = {
+        name: String(fd.get('name')).trim(),
+        plugin_id: fd.get('plugin_id'),
+        enabled: true,
+        config: {},
+    };
+    await api('/api/pipelines', { method: 'POST', body: JSON.stringify(payload) });
+    toast('Pipeline created.', 'success');
+    closeModal();
     await refreshAll();
 }
 
@@ -462,6 +487,17 @@ async function triggerPostNow(workerId) {
     } catch (e) { finishOperation(e.message, 'error'); }
 }
 
+async function postProductionItem(contentId) {
+    const pid = store.get('selectedPipelineId');
+    if (!pid) return;
+    const data = store.get('pipelineData')[pid] || {};
+    const workers = data.workers || [];
+    if (!workers.length) { toast('No workers attached to this pipeline.', 'error'); return; }
+    const enabledWorker = workers.find((w) => w.enabled);
+    if (!enabledWorker) { toast('No enabled workers attached.', 'error'); return; }
+    await triggerPostNow(enabledWorker.id);
+}
+
 async function testWorker(workerId) {
     try {
         const result = await api(`/api/workers/${workerId}/test`, { method: 'POST' });
@@ -507,18 +543,26 @@ async function submitWorker(event, workerId = null) {
     event.preventDefault();
     const fd = new FormData(event.target);
     const credentials = {};
+    let hasCreds = false;
     for (const [k, v] of fd.entries()) {
-        if (k.startsWith('cred_')) credentials[k.slice(5)] = String(v).trim();
+        if (k.startsWith('cred_')) {
+            const val = String(v).trim();
+            credentials[k.slice(5)] = val;
+            if (val) hasCreds = true;
+        }
     }
     const payload = {
         platform: fd.get('platform'),
         display_name: String(fd.get('display_name')).trim(),
         connection_strategy: fd.get('connection_strategy'),
-        credentials,
         schedule_cron: fd.get('schedule_cron') || null,
         hashtags: [],
         enabled: true,
     };
+    // Only send credentials on create or if user filled them in on edit
+    if (!workerId || hasCreds) {
+        payload.credentials = credentials;
+    }
     if (payload.connection_strategy === 'third_party') {
         payload.third_party_provider = fd.get('third_party_provider');
     }
@@ -545,6 +589,25 @@ async function saveSetting(key) {
 }
 
 // ── Posts ──────────────────────────────────────────────────────────────────
+function openPostDetail(postId) {
+    const post = store.get('posts').find((p) => p.id === postId);
+    if (!post) return;
+    openModal({
+        title: post.verse_label || 'Post Detail',
+        eyebrow: `${platformLabel(post.platform)} — ${post.status}`,
+        body: `
+            <div class="form-stack">
+                <p><strong>Pipeline:</strong> ${escapeHtml(post.pipeline_name || '-')}</p>
+                <p><strong>Worker:</strong> ${escapeHtml(post.worker_name || post.worker_id || '-')}</p>
+                <p><strong>Posted:</strong> ${formatDate(post.published_at || post.created_at)}</p>
+                <p><strong>Attempts:</strong> ${post.attempt_count || 0}</p>
+                ${post.platform_url ? `<p><a href="${escapeAttr(post.platform_url)}" target="_blank">Open on platform ↗</a></p>` : ''}
+                ${post.caption_used ? `<div class="code-panel"><span>Caption used</span><pre>${escapeHtml(post.caption_used)}</pre></div>` : ''}
+                ${post.error_log ? `<div class="code-panel"><span>Error log</span><pre style="color:var(--color-danger)">${escapeHtml(post.error_log)}</pre></div>` : ''}
+            </div>`,
+    });
+}
+
 function exportPosts() {
     const posts = store.get('posts');
     if (!posts.length) { toast('No posts to export.', 'error'); return; }
