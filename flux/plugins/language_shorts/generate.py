@@ -20,6 +20,8 @@ You are an expert language teacher. Generate exactly {count} vocabulary items fo
 
 Theme: {theme}
 Difficulty: {difficulty}
+Avoid these previously taught words (do not include them):
+{avoid_words}
 
 For each item, provide:
 1. The word or short sentence in {source_lang} (source text)
@@ -64,7 +66,8 @@ class GeminiGenerator:
         target_lang: str,
         theme: str,
         count: int = 5,
-        difficulty: str = "beginner"
+        difficulty: str = "beginner",
+        avoid_words: list[str] | None = None
     ) -> list[dict[str, Any]]:
         """Generate a batch of vocabulary words."""
         
@@ -72,12 +75,14 @@ class GeminiGenerator:
             logger.error("Cannot generate vocabulary: GEMINI_API_KEYS not set")
             return []
 
+        avoid_text = ", ".join(avoid_words) if avoid_words else "None"
         prompt = WORD_GENERATION_PROMPT.format(
             count=count,
             source_lang=source_lang,
             target_lang=target_lang,
             theme=theme,
-            difficulty=difficulty
+            difficulty=difficulty,
+            avoid_words=avoid_text
         )
 
         payload = {
@@ -136,8 +141,18 @@ class GeminiGenerator:
                     logger.warning("Unexpected JSON structure from Gemini: %s", type(result))
                     return []
 
+            except httpx.HTTPStatusError as e:
+                logger.error("Gemini HTTP error (status %d): %s", e.response.status_code, e.response.text)
+                self.rotate_key()
+            except httpx.RequestError as e:
+                logger.error("Gemini network error: %s", e)
+                # Network errors might just be transient, but we rotate anyway
+                self.rotate_key()
+            except json.JSONDecodeError as e:
+                logger.error("Gemini returned invalid JSON: %s", e)
+                # Not a key issue, but we try again
             except Exception as e:
-                logger.error("Gemini vocabulary generation attempt failed: %s", e)
+                logger.error("Gemini vocabulary generation failed unexpectedly: %s", e)
                 self.rotate_key()
 
         return []

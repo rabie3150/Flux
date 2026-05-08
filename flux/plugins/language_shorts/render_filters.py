@@ -108,8 +108,9 @@ def build_word_block_filters(
         )
     )
     
-    # 4. Phonetic
-    if phonetic_text:
+    # 4. Phonetic (only for beginner difficulty)
+    difficulty = config.get("difficulty", "beginner")
+    if phonetic_text and difficulty == "beginner":
         filters.append(
             build_drawtext(
                 phonetic_text,

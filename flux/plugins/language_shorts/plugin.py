@@ -46,7 +46,23 @@ class LanguageShortsPlugin(ContentPlugin):
         logger.info("LanguageShortsPlugin: Generating ingredients for pipeline %s", pipeline.id)
         config = pipeline.config_json_dict or self.default_config
         
-        # 1. Generate Vocabulary
+        # 1. Fetch previously taught words to avoid repeats
+        # We fetch all 'word_batch' ingredients for this pipeline to deduce past words
+        all_ingredients = await ingredient_service.get_pipeline_ingredients(db, pipeline.id)
+        taught_words = []
+        for ing in all_ingredients:
+            if ing.type == "word_batch" and ing.metadata_json:
+                try:
+                    meta = json.loads(ing.metadata_json)
+                    for word_obj in meta.get("words", []):
+                        if "source" in word_obj:
+                            taught_words.append(word_obj["source"])
+                except json.JSONDecodeError:
+                    continue
+                    
+        logger.info("Found %d previously taught words to avoid.", len(taught_words))
+        
+        # 2. Generate Vocabulary
         themes = config.get("themes", ["basics"])
         theme = random.choice(themes)
         
@@ -56,7 +72,8 @@ class LanguageShortsPlugin(ContentPlugin):
             target_lang=config.get("target_lang", "it"),
             theme=theme,
             count=config.get("words_per_video", 5),
-            difficulty=config.get("difficulty", "beginner")
+            difficulty=config.get("difficulty", "beginner"),
+            avoid_words=taught_words
         )
         
         added_count = 0

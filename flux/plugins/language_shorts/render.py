@@ -53,30 +53,25 @@ async def _generate_audio_assets(words: list[dict], config: dict, temp_dir: Path
     """Generate TTS audio for all words and return enriched list with file paths."""
     tts_cfg = config.get("tts", {})
     provider = tts_cfg.get("provider", "inworld")
-    source_voice = tts_cfg.get("source_voice", "en-US-JennyNeural")
-    target_voice = tts_cfg.get("target_voice", "Orietta")
     
-    # We'll use EdgeTTS for English and Inworld for Italian based on the config.
-    # Wait, let's just respect the config. If it's EdgeTTS voice, use edge_tts, else inworld.
-    # A simple heuristic: if it contains '-', it's likely EdgeTTS. Otherwise, default provider.
-    def _guess_agent(voice_id: str) -> str:
-        if "-" in voice_id and provider == "inworld":
-            return "edge_tts" # fallback
-        return provider
+    # Allow explicit override of provider per voice, fallback to global provider
+    source_voice = tts_cfg.get("source_voice", "en-US-JennyNeural")
+    source_provider = tts_cfg.get("source_provider", provider)
+    
+    target_voice = tts_cfg.get("target_voice", "Orietta")
+    target_provider = tts_cfg.get("target_provider", provider)
 
     enriched = []
     for i, w in enumerate(words):
         # Source
         s_text = w["source"]
-        s_agent = _guess_agent(source_voice)
-        s_audio = await synthesize(s_text, voice_id=source_voice, agent_id=s_agent)
+        s_audio = await synthesize(s_text, voice_id=source_voice, agent_id=source_provider)
         s_path = temp_dir / f"word_{i}_source.wav"
         s_path.write_bytes(s_audio)
         
         # Target
         t_text = w["target"]
-        t_agent = _guess_agent(target_voice)
-        t_audio = await synthesize(t_text, voice_id=target_voice, agent_id=t_agent)
+        t_audio = await synthesize(t_text, voice_id=target_voice, agent_id=target_provider)
         t_path = temp_dir / f"word_{i}_target.wav"
         t_path.write_bytes(t_audio)
         
@@ -117,6 +112,8 @@ async def render_video(
         
         # 2. Build inputs
         # Background image (looping)
+        if not background_paths:
+            raise RuntimeError("Cannot render video: background_paths list is empty.")
         bg = background_paths[0] # Just use the first one for simplicity
         
         input_args = [
