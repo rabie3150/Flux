@@ -294,6 +294,15 @@ def build_outro_filters(
     ]
 
 
+def _highlight_word(text: str, word: str, color: str = "#FFD700") -> str:
+    """Wrap first occurrence of *word* in FFmpeg drawtext color markup."""
+    import re
+    if not word or not text:
+        return text
+    pattern = re.compile(rf"\b({re.escape(word)})\b", re.IGNORECASE)
+    return pattern.sub(rf"{{\\c{color}}}\1{{\\c}}", text, count=1)
+
+
 def wrap_text(text: str, max_chars: int = 18) -> str:
     """Wrap text to multiple lines by inserting newlines at word boundaries."""
     if not text or len(text) <= max_chars:
@@ -324,6 +333,7 @@ def build_word_block_filters(
     target_text: str,
     phonetic_text: str,
     config: dict[str, Any],
+    example_sentence: str = "",
 ) -> list[str]:
     """Build all drawtext filters for a single word pair."""
     timing = config.get("timing", {})
@@ -335,7 +345,8 @@ def build_word_block_filters(
     reveal = timing.get("reveal_hold_secs", 3.0)
     reveal_transition = timing.get("reveal_transition_secs", 0.5)
 
-    block_end = start_time + en_display + reveal
+    sentence_display = timing.get("sentence_display_secs", 0.0)
+    block_end = start_time + en_display + reveal + sentence_display
     filters = []
 
     text_color = style.get("text_color", "#FFFFFF")
@@ -426,6 +437,34 @@ def build_word_block_filters(
             )
         )
 
+    # 3. Example sentence (below target text, inside card)
+    if example_sentence:
+        sentence_start = start_time + en_display + reveal
+        sentence_end = sentence_start + sentence_display
+        sentence_font_size = 48
+        sentence_color = "#DDDDDD"
+        wrapped_sentence = wrap_text(example_sentence, max_chars=24)
+        highlighted = _highlight_word(wrapped_sentence, target_text)
+
+        if show_phonetic:
+            sentence_y_pos = "1240-th/2"
+        else:
+            sentence_y_pos = "1280-th/2"
+
+        filters.append(
+            build_animated_text(
+                wrapped_sentence,
+                start_time=sentence_start,
+                end_time=sentence_end,
+                y_pos=sentence_y_pos,
+                config=config,
+                fontsize=sentence_font_size,
+                fontcolor=sentence_color,
+                fade_in=0.3,
+                fade_out=0.2,
+                weight="Regular",
+            )
+        )
 
     return filters
 
