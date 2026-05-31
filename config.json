@@ -87,10 +87,7 @@
   },
   "output_dir": "./output",
   "show_logs": true,
-  "gemini_api_keys": [
-    "AIzaSyDmz0Ic6_1wt84nGGLcrSgw5xTQd3HWJ-o",
-    "AIzaSyCCi93x6KDuspcw5n2zbzXlabPBPj12PaM"
-  ],
+  "gemini_api_keys": [],
   "pexels_api_key": "",
   "unsplash_access_key": ""
 }
