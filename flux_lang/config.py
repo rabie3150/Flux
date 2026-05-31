@@ -64,6 +64,7 @@ class TimingConfig(BaseModel):
     en_display_secs: float = 2.5
     reveal_transition_secs: float = 0.5
     reveal_hold_secs: float = 3.0
+    sentence_display_secs: float = 2.5
     pause_between_secs: float = 1.0
     outro_duration: float = 3.0
 
