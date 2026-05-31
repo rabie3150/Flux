@@ -3,9 +3,9 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "flux"
-version = "0.1.0"
-description = "The idle automator. Content automation engine running on Termux."
+name = "flux-lang"
+version = "2.0.0"
+description = "Standalone vocabulary translation video generator for language learning."
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -13,8 +13,8 @@ authors = [
     {name = "Flux Operator"},
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Developers",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
@@ -22,24 +22,26 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "yt-dlp>=2026.3.17",
+    "httpx>=0.27.0",
+    "Pillow>=10.0.0",
+    "pydantic>=2.5.0",
+    "rich>=13.0.0",
+    "edge-tts>=6.0.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
-    "httpx>=0.27",
     "ruff>=0.4",
 ]
 
+[project.scripts]
+flux-lang = "flux_lang.__main__:main"
+
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["flux*", "plugins*"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
+include = ["flux_lang*"]
 
 [tool.ruff]
 line-length = 100

@@ -1,0 +1,96 @@
+{
+  "source_lang": "en",
+  "target_lang": "it",
+  "words_per_video": 5,
+  "difficulty": "beginner",
+  "themes": [
+    "greetings",
+    "food",
+    "travel",
+    "family",
+    "numbers",
+    "colors",
+    "emotions",
+    "daily routines",
+    "shopping",
+    "directions",
+    "weather",
+    "time"
+  ],
+  "tts": {
+    "provider": "inworld",
+    "source_voice": "Elliot",
+    "source_voice_fallback": "en-US-GuyNeural",
+    "target_voice": "Gianni",
+    "target_voice_fallback": "it-IT-IsabellaNeural",
+    "speaking_rate": 0.9
+  },
+  "canvas": {
+    "width": 1080,
+    "height": 1920,
+    "fps": 30
+  },
+  "timing": {
+    "intro_duration": 3.5,
+    "en_display_secs": 2.5,
+    "reveal_transition_secs": 0.5,
+    "reveal_hold_secs": 3.0,
+    "pause_between_secs": 1.0,
+    "outro_duration": 3.0
+  },
+  "style": {
+    "source_font_size": 140,
+    "target_font_size": 140,
+    "countdown_font_size": 140,
+    "phonetic_font_size": 64,
+    "text_color": "#FFFFFF",
+    "accent_color": "#FFD700",
+    "countdown_color": "#FFD700",
+    "phonetic_color": "#AAAAAA",
+    "progress_dots": true,
+    "fontfile": null,
+    "bg_dim_opacity": 0.35,
+    "ken_burns_speed": 0.3,
+    "card_fill_rgba": [
+      25,
+      25,
+      35,
+      170
+    ],
+    "card_border_rgba": [
+      255,
+      255,
+      255,
+      70
+    ],
+    "card_corner_radius": 36,
+    "card_border_width": 2
+  },
+  "bg": {
+    "pexels_keywords": [
+      "gradient",
+      "abstract",
+      "pastel",
+      "minimal"
+    ],
+    "unsplash_keywords": [
+      "texture",
+      "pattern",
+      "soft light"
+    ],
+    "blocklist": [
+      "people",
+      "face",
+      "portrait"
+    ],
+    "local_folder": null
+  },
+  "output_dir": "./output",
+  "show_logs": true,
+  "gemini_api_keys": [
+    "AIzaSyDmz0Ic6_1wt84nGGLcrSgw5xTQd3HWJ-o",
+    "AIzaSyCCi93x6KDuspcw5n2zbzXlabPBPj12PaM"
+  ],
+  "pexels_api_key": "",
+  "unsplash_access_key": ""
+}

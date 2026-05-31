@@ -484,6 +484,218 @@ Based on browser subagent audit on port 8001:
 | Security | 7 | 0 | 3 | 10 |
 | Data Strategy | 12 | 0 | 0 | 12 |
 | Testing | 12 | 0 | 3 | 15 |
-| **TOTAL** | **132** | **7** | **55** | **194** |
+| **TOTAL** | **133** | **7** | **54** | **194** |
 
 > **~52% done, ~6% in-progress, ~43% not started.** Phase 7 (hardening/watchdog/remote) is now complete. The largest remaining gaps are: platform publishing (4 stubs), admin UI polish (28 items), and monitoring/alerting notifications.
+
+---
+
+## 14. PRD v1.0 Audit — Additional Gaps, Flaws & Bugs
+
+> **Methodology**: Cross-referenced `01-prd.md` against the actual codebase. Items below were either not covered in the prior audit (docs `01`–`16`) or represent newly discovered bugs/flaws.
+
+### Missing PRD Requirements
+
+| ID | Item | PRD Ref | Severity |
+|----|------|---------|----------|
+| PRD-01 | **Telegram low-stock alerts missing** — `flux/core/notifications.py` has `send_alert_storage_critical`, `send_alert_worker_failed`, etc., but **no `send_alert_low_stock()`**. PRD F-07 explicitly requires "low stock" alerts. The stock-level logic exists (`get_stock_level()`) but never triggers a notification. | F-07 | Medium |
+| PRD-02 | **Performance NFR benchmarks missing** — PRD 6.1 specifies quantitative targets: (a) render throughput 1 video / 2–5 min on ARM, (b) dashboard load < 500 ms, (c) SQLite aggregations < 100 ms. No benchmarks, load tests, or query-performance tests exist. | 6.1 | Medium |
+| PRD-03 | **Network outage resilience not explicitly designed** — PRD 6.2 states "Network outages shall not crash the daemon; retry with backoff." While publishing has retry, other network paths (fetch, Telegram API, health checks) lack a unified outage-handling strategy or test. | 6.2 | Medium |
+| PRD-04 | **Plugin API runtime version enforcement missing** — `Plugin.api_version` is stored in the DB but `load_plugins()` never validates that a loaded plugin's API version is compatible with the core runtime. A breaking plugin change could crash the engine. | 6.5 | Medium |
+| PRD-05 | **ADR (Architecture Decision Records) missing** — PRD 6.5 requires ADRs for all major architectural choices. None exist in the repo. | 6.5 | Low |
+| PRD-06 | **60-second reboot recovery not validated** — PRD Success Criterion #3 requires recovery within 60 seconds. No test or measurement exists. | §8 | Low |
+| PRD-07 | **90-day zero-duplicate validation not tested** — PRD Success Criterion #4 requires zero duplicates for 90 days. No dedup stress-test or simulation exists. | §8 | Low |
+
+### Bugs & Logic Flaws
+
+| ID | Item | File / Line | Severity |
+|----|------|-------------|----------|
+| BUG-01 | **APScheduler job removal on startup causes missed posts after reboot** — `register_worker_jobs()` removes *all* worker jobs and re-adds them on every startup. APScheduler's SQLite jobstore loses last-run state for cron triggers. If the daemon is down during a scheduled post time and restarts later, the cron trigger recalculates its next fire time from "now", silently **missing the past occurrence**. This directly violates PRD F-02 (survive reboots without missing jobs). | `flux/core/scheduler_jobs.py` L44–46 | **Critical** |
+| BUG-02 | **Cascade deletes destroy immutable post audit trail** — `Pipeline` → `cascade="all, delete-orphan"` on `produced_content`; `ProducedContent` → `cascade="all, delete-orphan"` on `post_records`. `PlatformWorker` also cascades to `post_records`. Deleting a pipeline or worker permanently destroys `PostRecord` history. PRD implies post records are an immutable audit trail ("Track every post in a `post_records` table"). | `flux/models.py` L76–84, L118–120, L193–195 | **High** |
+| BUG-03 | **Publish retry lacks exponential backoff** — PRD F-22 says "Retry failed posts up to 3 times with exponential backoff." The current code sets `should_retry = result.transient and attempt_count < MAX_RETRIES`, but the retry only happens on the **next cron trigger** (could be hours later). There is no actual backoff timing (e.g., 5 min, 15 min, 45 min). | `flux/core/publish.py` L283–324 | High |
+| BUG-04 | **`_maybe_auto_delete` uses current pipeline-worker attachments** — Auto-delete checks `PipelineWorker` at the moment of evaluation. If a worker is detached from a pipeline after content is produced but before publishing completes, auto-delete will consider that worker "done" (not in the set) and may delete files before the remaining attached workers publish. | `flux/core/publish.py` L138–166 | Medium |
+| BUG-05 | **Render alert threshold too high** — `send_alert_render_failed` only fires after **3 consecutive failures**. Intermittent failures (e.g., thermal guard, temporary disk full) that resolve between attempts never alert the operator, despite PRD F-07 requiring notifications for "errors". | `flux/core/notifications.py` L92–95 | Medium |
+| BUG-06 | **`get_unused_approved_ingredients` does O(N×M) Python filtering** — Loads all approved ingredients and all produced-content ID lists into memory, then filters in Python. For large pipelines this is slow and RAM-heavy. Should be a single SQL `NOT EXISTS` or `LEFT JOIN` query. | `flux/core/ingredients.py` L194–224 | Medium |
+| BUG-07 | **Stale `rendering` records never recovered after crash** — If the daemon crashes during `ProducedContent` status `"rendering"`, the row stays in that state forever. No startup scan resets stale renders to `"failed"` or `"pending"`. (Partially noted in Phase 2 but not assigned a fix task.) | `flux/models.py` L183–185, `flux/plugins/quran/render.py` | Medium |
+| BUG-08 | **No render-timeout / zombie-FFmpeg recovery** — `_run_ffmpeg` has a 300-second timeout, but if FFmpeg is killed by the OS or hangs in a state `proc.communicate()` can't detect, the render lock may never be released and the `rendering` record stays stuck indefinitely. | `flux/plugins/quran/render.py` L75–94 | Medium |
+| BUG-09 | **Tasks list incorrectly claims no `posts.py` API router** — The audit at line 179 states "no `posts.py` API router", but `flux/api/posts.py` exists and is wired in `flux/main.py`. The tasks list itself is stale here. | `conception_tasks_list.md` L179 | Low |
+
+### Performance Issues
+
+| ID | Item | File / Line | Severity |
+|----|------|-------------|----------|
+| PERF-01 | **`get_storage_budget` walks the entire storage tree synchronously** — `_get_dir_size` uses `os.scandir` recursively on every dashboard call. On a large 5 GB library this can block the event loop for hundreds of milliseconds, violating the <100 ms query target. | `flux/core/storage.py` L28–40 | Medium |
+| PERF-02 | **Dashboard API lacks query-result caching** — Every dashboard request re-runs `count(*)` queries and storage scans. No Redis, in-memory cache, or materialized view is used. | `flux/api/system.py` L47–82 | Low |
+
+---
+
+## 15. Conception Docs 02–16 Audit — Cross-Cutting Gaps
+
+> **Methodology**: Every conception document (`02-user-personas` through `16-build-plan`) was read and cross-referenced against the actual codebase. Items below were not covered in the prior PRD audit (Section 14) or the original build-plan audit (Sections 1–13).
+
+### Doc 02 — User Personas & Journey Maps
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| UPM-01 | **First-run wizard / setup checklist** in admin panel | Low | Doc describes a single-page checklist for API keys, channels, workers. Not implemented. |
+| UPM-02 | **Real-time download progress** in admin panel | Low | yt-dlp fetch progress is not streamed to the UI. |
+| UPM-03 | **Pre-generated low-res thumbnails** for ingredients | Low | Ingredient library shows full images; no low-res proxy generation. |
+| UPM-04 | **Thermal-aware scheduling pause at 45°C** | Medium | Doc specifies pause renders at >45°C. Code warns at 55°C and **blocks** at 65°C. No scheduling pause or "ultrafast" preset fallback when hot. |
+| UPM-05 | **Telegram deep link to preview + one-click post** | Low | Telegram alerts contain no deep links to the admin panel. |
+| UPM-06 | **Inline "Edit next caption" reply to Telegram bot** | Low | Bot is notification-only; no interactive commands. |
+| UPM-07 | **Smart cleanup suggestions** (oldest published) | Low | Storage alerts say "please free up space" but don't suggest specific files. |
+| UPM-08 | **Guided session login via admin panel QR code** (Instagram) | Low | No QR login flow; Instagrapi session must be imported manually. |
+| UPM-09 | **Boot notification + self-health check report** after reboot | Low | No Telegram message sent when daemon starts after a reboot. |
+| UPM-10 | **Plugin template generator CLI** (`flux generate-plugin`) | Low | No CLI scaffolding for new plugins. |
+| UPM-11 | **Non-developer quickstart documentation** | Low | Docs assume Python/Linux knowledge; no "non-developer quickstart" path exists. |
+
+### Doc 04 — User Flow Diagrams
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| UFD-01 | **Auto-delete rejected toggle in approval UI** | Low | Flow shows "Auto-delete rejected? Yes/No" decision after rejection. UI has no such toggle; cleanup is hardcoded to 7 days. |
+| UFD-02 | **Plugin linting/validation command** | Low | `flux validate-plugin ./plugins/my_plugin` does not exist. |
+| UFD-03 | **Hot plugin reload** (no restart required) | Low | Doc says "Restart daemon; plugin auto-registers." Still requires full restart. |
+| UFD-04 | **Startup recovery: mark interrupted renders as pending** | High | Error recovery flow explicitly says "Mark interrupted renders as pending" on reboot. Not implemented. (Same as BUG-07.) |
+
+### Doc 06 — Functional Specification Document (FSD)
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| FSD-01 | **Structured error response format** | Low | FSD §2.2 specifies `{error: {code, message, field, retryable, documentation_url}}`. Current API returns plain `{"detail": "..."}` FastAPI defaults. |
+| FSD-02 | **Caption template live preview with sample data** | Low | FSD §6.3 describes live preview rendering template with sample data. No preview endpoint exists. |
+| FSD-03 | **`plugin.yaml` manifest validation** | Medium | FSD §1.1 describes YAML manifest with schema validation. Plugins use Python class registration instead. (Already noted in Section 3.) |
+| FSD-04 | **`identify_content()` hook present and functional** | OK | `ContentPlugin.identify_content()` exists in `flux/plugins/base.py` and is called by `pipeline.py`. |
+| FSD-05 | **`get_config_schema()` present** | OK | Exists and returns JSONSchema dict. |
+
+### Doc 07 — Technical Feasibility Study
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| TFS-01 | **Whisper.cpp local transcription** | Medium | Doc describes building whisper.cpp for ARM and using it as a fallback for verse ID. Not implemented. (Already noted in Section 3.) |
+| TFS-02 | **Thermal pause threshold mismatch** | Medium | Doc specifies 45°C pause. Actual code: warn at 55°C, block at 65°C. No graceful degradation (ultrafast preset) when warm. |
+| TFS-03 | **yt-dlp weekly auto-update cron** | Low | Doc mentions weekly cron to update yt-dlp. Not implemented. |
+| TFS-04 | **Android Doze / battery optimization handling** | Medium | Doc mentions `Termux:WakeLock` + ignore battery optimizations. Bootstrap script does not configure Android battery settings. |
+
+### Doc 08 — System Architecture Document (SAD)
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| SAD-01 | **`quran_text.db` for local fuzzy matching** | Medium | SAD §7 shows `quran_text.db` for local Quran text fuzzy matching. No such database or logic exists. |
+| SAD-02 | **Pipeline Orchestrator as distinct service** | Low | SAD §3.3 describes a Pipeline Orchestrator service. Orchestration logic is scattered across `pipeline.py`, `scheduler_jobs.py`, and `publish.py` rather than a unified service. |
+| SAD-03 | **Telegram Bot using `python-telegram-bot`** | Low | SAD §3.1 mentions `python-telegram-bot`. The library is in `requirements.txt` but the actual notification code uses manual `urllib` requests. |
+| SAD-04 | **Plugin validation on load** (no network access) | Low | SAD §3.4 says "Plugin manifest validated; no network access during plugin load." No validation beyond import exists. |
+
+### Doc 09 — Data Strategy & Content Pipeline Design
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| DSP-01 | **`review_flag` hard blocker not enforced** | **High** | Doc §5.2 and §6.2 state that content with `review_flag=true` **cannot** enter the ready queue. The code sets `status="verse_unknown"` but never checks `review_flag` in metadata. A manual verse assignment could theoretically bypass review. |
+| DSP-02 | **Render modes `image_compose`, `text_only`, `passthrough` untested** | Medium | Doc §5.1 defines these modes. `video_compose` is tested; others are defined in code but never exercised by a real plugin. |
+| DSP-03 | **Pipeline-worker platform-content mismatch warnings** | Low | Doc §5.5 (Platform-Content Matrix) implies UI should warn when attaching a text-only pipeline to YouTube. No such validation exists. |
+| DSP-04 | **Per-pipeline stock thresholds in settings UI** | Low | Doc §7.1 shows stock thresholds stored per pipeline in `config_json`. No UI exists to edit them. |
+
+### Doc 10 — Infrastructure & Deployment Plan
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| INF-01 | **`termux-api` package in bootstrap** | Low | Doc §2.1 lists `termux-api` as optional but recommended. `scripts/bootstrap.sh` does not mention it. |
+| INF-02 | **`rclone` cloud backup integration** | Low | Doc §7.1 mentions `rclone` to cloud for DB backup. Only local file-copy backup exists. |
+| INF-03 | **Disaster recovery playbook automation** | Low | Doc §10 lists recovery scenarios. Documented only; no automated recovery scripts. |
+| INF-04 | **Alembic migrations directory** | Medium | Doc §2.2 and §9.1 reference `alembic/` and `alembic upgrade head`. No `alembic/` directory exists; tables created via `create_all()`. (Already noted.) |
+| INF-05 | **Whisper.cpp build in bootstrap** | Medium | Doc §2.3 describes building whisper.cpp during bootstrap. Not included. |
+| INF-06 | **Log retention time-based (7 days)** | Low | Doc §4.3 / §9.3 mentions 7-day log retention. `RotatingFileHandler` uses size-based rotation (5 MB), not time-based. `activity_log` has 30-day truncation. |
+
+### Doc 11 — Security & Risk Assessment
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| SEC-01 | **Auto-approve per ingredient type setting** | Medium | Doc §5.1 says "Auto-approve can be enabled per ingredient type in settings, but is disabled by default." No such setting exists in code or UI. |
+| SEC-02 | **`retracted` status for post_records** | Low | Doc §9.2 mentions marking a post as `retracted` after manual deletion. `PostRecord.status` only supports `pending/published/failed`. |
+| SEC-03 | **Hash verification for pip installs (`--require-hashes`)** | Low | Doc §6 says "Future: use `pip install --require-hashes`". Not implemented. |
+| SEC-04 | **Plugin audit / sandboxing** | Low | Doc §6 says "Plugin manifest validated; no network access during plugin load." Not enforced. |
+| SEC-05 | **yt-dlp weekly auto-update** | Low | Same as TFS-03. |
+| SEC-06 | **Rate limiting jitter `randint(0, 600)` before posts** | Medium | Doc §4.1 specifies random delay before posts. Not implemented. (Already noted.) |
+| SEC-07 | **Post timing window 07:00–21:00** | Medium | Doc §4.1 specifies human-hours posting window. Not enforced. (Already noted.) |
+| SEC-08 | **Session reuse for Instagram** | Medium | Doc §4.2 says "Use instagrapi with session reuse". Not implemented. (Already noted.) |
+| SEC-09 | **Key rotation CLI command** | Low | Doc §3.1 mentions "Operator can re-encrypt all credentials with a new key via CLI command." Not implemented. (Already noted.) |
+
+### Doc 12 — API & Integration Strategy
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| API-01 | **URL versioning `/api/v1/...`** | Low | Doc §2.3 reserves `/api/v1/...` for future breaking changes. All current endpoints are unversioned `/api/...`. |
+| API-02 | **`X-Flux-Key` header for external API clients** | Low | Doc §2.4 mentions optional API key. Not implemented. |
+| API-03 | **`alquran.cloud` fallback for verse data** | Low | Doc §3.2 describes alquran.cloud as fallback if quran.com is down. Not implemented. |
+| API-04 | **YouTube quota tracking in DB** | Medium | Doc §4.1 and §6 say "Quota tracking in DB; alert at 70%". No quota tracking table or alert exists. |
+| API-05 | **Dashboard quota consumption display** | Medium | Doc §6 says "Dashboard must display quota consumption." Not implemented. |
+| API-06 | **GitHub Actions remote trigger validates Bearer token** | Medium | Doc §5.2 shows `Authorization: Bearer ${{ secrets.FLUX_REMOTE_KEY }}`. The `/api/system/remote` endpoint accepts any request; no token validation. |
+| API-07 | **`TransientError` / `PermanentError` exception classes** | Medium | Doc §4.3 defines these exceptions. Code uses `PublishResult.transient` boolean instead. (Already noted.) |
+| API-08 | **`authenticate()` and `get_quota()` in base publisher** | Medium | Doc §4.2 specifies these methods. Not in `PlatformPublisher` base class. (Already noted.) |
+
+### Doc 13 — Monitoring, Observability & Alerting
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| MON-01 | **`flux_renders_duration_seconds` histogram metric** | Low | Doc §6.1 specifies this metric. Not emitted by `/api/metrics`. |
+| MON-02 | **`flux_fetch_items_total` counter metric** | Low | Not emitted by `/api/metrics`. |
+| MON-03 | **`flux_queue_depth` gauge metric** | Low | Not emitted by `/api/metrics`. |
+| MON-04 | **`flux_content_review_backlog` gauge metric** | Low | Not emitted by `/api/metrics`. |
+| MON-05 | **`plugins` health check in `/api/health`** | Low | Doc §2.1 health JSON includes `plugins: {quran_shorts: "ok"}`. `rich_health_check()` does not check plugin status. |
+| MON-06 | **Storage >= 80% warning Telegram alert** | Medium | Doc §5.1 lists this as a Warning alert. Code only sends Critical at >=95%. The 80% warning is logged but not sent to Telegram. |
+| MON-07 | **Verse unknown backlog > 5 alert** | Low | Doc §5.1 says alert at >5. Code alerts at >=10 (`send_alert_verse_backlog`). |
+| MON-08 | **Daemon restarted after crash alert** | Low | Doc §5.1 lists "Daemon restarted after crash" as Warning. No startup notification exists. |
+| MON-09 | **Historical views (calendar, storage chart, render time chart)** | Low | Doc §7.2 describes calendar view, storage trend, render time charts. Not implemented. |
+| MON-10 | **Real-time indicators in admin UI** | Low | Doc §7.1 lists uptime, next action, render progress, worker dots, storage bar with refresh intervals. Not implemented. (Already noted.) |
+
+### Doc 14 — Content Strategy & Expansion Roadmap
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| CSR-01 | **Platform-content mismatch warnings in UI** | Low | Doc §5 says "pipeline-worker attachment UI must warn or prevent mismatches." Not implemented. |
+| CSR-02 | **Content calendar visual view** | Low | Doc §4.3 and §6 describe a visual monthly calendar. Not implemented. (Already in future list.) |
+| CSR-03 | **Cross-pipeline coordination** (e.g., Friday Quran, Saturday Hadith) | Low | Doc §4.3 and §6.1 describe scheduling coordination. Not implemented. (Already in future list.) |
+| CSR-04 | **Seasonal content adjustments** (Ramadan, Eid) | Low | Doc §6.2 describes seasonal frequency changes. Not implemented. |
+| CSR-05 | **Analytics feedback loop** | Low | Doc §9 mentions tracking which verses/formats perform best. Not implemented. |
+| CSR-06 | **All future content plugins** (Hadith, Quotes, Reminders, News, Community) | Low | Explicitly post-v1.0; already in future list. |
+
+### Doc 15 — Decision Log (ADRs)
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| ADR-020 | **Alembic migrations** | Medium | ADR-020 accepted Alembic for migrations. No `alembic/` directory exists. (Already noted.) |
+
+### Doc 16 — Build Plan
+
+| ID | Item | Severity | Notes |
+|----|------|----------|-------|
+| BP-01 | **Phase 5 YouTube upload marked incomplete in build plan but implemented** | Low | Discrepancy: Build plan Phase 5 lists YouTube upload as `[ ]`, but it is implemented. Tasks list correctly marks it done. |
+| BP-02 | **Phase 7 marked incomplete in build plan but implemented** | Low | Build plan shows Phase 7 as "⏳ Not started" but watchdog, backup, thermal guard, and SSH hardening are all done. |
+| BP-03 | **Device test directory (`@pytest.mark.device`)** | Medium | Build plan §5.4 describes device tests. No `tests/device/` directory or `@pytest.mark.device` marker exists. (Already noted.) |
+| BP-04 | **48-hour soak test** | Medium | Build plan §3 Phase 7 validation requires 48-hour soak. Not performed. (Already noted.) |
+| BP-05 | **Per-phase manual checklists (`PHASE_N_CHECKLIST.md`)** | Low | Build plan §5.5 requires checklists. Only `PHASE_4_PLAN.md` exists. (Already noted.) |
+
+---
+
+## Updated Summary Stats
+
+| Category | Done | In Progress | Not Started | Total |
+|----------|------|-------------|-------------|-------|
+| Build Plan Phases 0–4 | 31 | 0 | 0 | 31 |
+| Build Plan Phase 5 | 9 | 0 | 4 | 13 |
+| Build Plan Phase 6 | 0 | 1 | 5 | 6 |
+| Build Plan Phase 7 | 7 | 0 | 0 | 7 |
+| Core Engine | 7 | 1 | 2 | 10 |
+| Platform Workers | 2 | 1 | 5 | 8 |
+| Admin UI Screens | 1 | 4 | 23 | 28 |
+| API Endpoints | 26 | 0 | 0 | 26 |
+| Infrastructure | 6 | 0 | 4 | 10 |
+| Monitoring & Alerting | 11 | 0 | 7 | 18 |
+| Security | 7 | 0 | 3 | 10 |
+| Data Strategy | 12 | 0 | 0 | 12 |
+| Testing | 12 | 0 | 3 | 15 |
+| **PRD v1.0 Audit (new)** | 0 | 0 | **18** | **18** |
+| **Conception Docs 02–16 Audit (new)** | 2 | 0 | **63** | **65** |
+| **TOTAL** | **133** | **7** | **135** | **275** |
+
+> **~48% done, ~3% in-progress, ~49% not started.** Newly discovered critical bugs (BUG-01, BUG-02, BUG-03) and the high-severity `review_flag` hard blocker (DSP-01) should be prioritized above UI polish.
