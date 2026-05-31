@@ -25,10 +25,11 @@ For each item, provide:
 3. phonetic — pronunciation guide for target
 4. difficulty — {difficulty}
 5. category — e.g. "greetings", "food", "numbers"
+6. example_sentence — a natural sentence in {target_lang} using the target word
 
 Return ONLY a valid JSON array without markdown. Example:
 [
-  {{"source": "Hello", "target": "Ciao", "phonetic": "CHOW", "difficulty": "beginner", "category": "greetings"}}
+  {{"source": "Hello", "target": "Ciao", "phonetic": "CHOW", "difficulty": "beginner", "category": "greetings", "example_sentence": "Ciao, come stai?"}}
 ]"""
 
 
@@ -102,6 +103,7 @@ class GeminiGenerator:
                                 "difficulty": str(item.get("difficulty", difficulty)),
                                 "category": str(item.get("category", theme)),
                                 "theme": theme,
+                                "example_sentence": str(item.get("example_sentence", "")),
                             }
                             for item in result
                             if "source" in item and "target" in item
