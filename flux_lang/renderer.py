@@ -64,7 +64,7 @@ async def _generate_audio_assets(
             on_progress(step, detail)
 
     completed = 0
-    total_audios = len(words) * 2 + 2  # source + target for each word, plus intro + outro
+    total_audios = len(words) * 3 + 2  # source + target + sentence for each word, plus intro + outro
 
     async def _synthesize_with_fallback(text: str, voice: str, fallback: str, path: Path) -> None:
         nonlocal completed
@@ -115,6 +115,7 @@ async def _generate_audio_assets(
     for i, w in enumerate(words):
         s_path = temp_dir / f"word_{i}_source.wav"
         t_path = temp_dir / f"word_{i}_target.wav"
+        sent_path = temp_dir / f"word_{i}_sentence.wav"
 
         word_tasks.append(
             _synthesize_with_fallback(w["source_text"], source_voice, source_voice_fallback, s_path)
@@ -123,11 +124,19 @@ async def _generate_audio_assets(
             _synthesize_with_fallback(w["target_text"], target_voice, target_voice_fallback, t_path)
         )
 
-        enriched.append({
+        enriched_word = {
             **w,
             "source_audio_path": str(s_path),
             "target_audio_path": str(t_path),
-        })
+        }
+
+        if w.get("example_sentence"):
+            word_tasks.append(
+                _synthesize_with_fallback(w["example_sentence"], target_voice, target_voice_fallback, sent_path)
+            )
+            enriched_word["sentence_audio_path"] = str(sent_path)
+
+        enriched.append(enriched_word)
 
     _report("tts", f"Starting parallel synthesis of {total_audios} voiceovers...")
 
@@ -256,11 +265,12 @@ async def render_video(
     intro_dur = timing.intro_duration
     en_display = timing.en_display_secs
     reveal = timing.reveal_hold_secs
+    sentence_display = timing.get("sentence_display_secs", 0.0)
     pause = timing.pause_between_secs
     outro_dur = timing.outro_duration
     extra_padding = 1.0
 
-    block_dur = en_display + reveal + pause
+    block_dur = en_display + reveal + sentence_display + pause
 
     with tempfile.TemporaryDirectory() as td:
         temp_dir = Path(td)
@@ -341,6 +351,13 @@ async def render_video(
             audio_filters.append(f"[{s_idx}:a]adelay={s_delay_ms}|{s_delay_ms}[a{i}s]")
             audio_filters.append(f"[{t_idx}:a]adelay={t_delay_ms}|{t_delay_ms}[a{i}t]")
 
+            if w.get("sentence_audio_path"):
+                input_args.extend(["-i", w["sentence_audio_path"]])
+                sent_idx = current_input_idx
+                current_input_idx += 1
+                sent_delay_ms = int((block_start + en_display + reveal + 0.3) * 1000)
+                audio_filters.append(f"[{sent_idx}:a]adelay={sent_delay_ms}|{sent_delay_ms}[a{i}sent]")
+
         if outro_audio_path:
             input_args.extend(["-i", outro_audio_path])
             outro_idx = current_input_idx
@@ -412,7 +429,7 @@ async def render_video(
 
         for i, w in enumerate(enriched_words):
             block_start = intro_dur + (i * block_dur)
-            block_end = block_start + en_display + reveal
+            block_end = block_start + en_display + reveal + sentence_display
 
             # 1. Backdrop blur: split video, crop card area (exact size), blur, apply rounded mask, and overlay back
             filter_parts.append(
@@ -440,6 +457,7 @@ async def render_video(
                 source_text=w["source_text"],
                 target_text=w["target_text"],
                 phonetic_text=w.get("phonetic", ""),
+                example_sentence=w.get("example_sentence", ""),
                 config=cfg_dict,
             )
             if w_filters:
@@ -462,12 +480,18 @@ async def render_video(
             filter_parts.append(f"[{last_label}]format=yuv420p[v_out]")
 
         # Chain audio filters
-        word_audio_labels = "".join([f"[a{i}s][a{i}t]" for i in range(len(enriched_words))])
+        word_audio_labels = ""
+        for i, w in enumerate(enriched_words):
+            word_audio_labels += f"[a{i}s][a{i}t]"
+            if w.get("sentence_audio_path"):
+                word_audio_labels += f"[a{i}sent]"
+
         intro_label = "[aintro]" if intro_audio_path else ""
         outro_label = "[aoutro]" if outro_audio_path else ""
         ding_label = "[ading]" if ding_path else ""
         total_audio_inputs = (
             len(enriched_words) * 2
+            + sum(1 for w in enriched_words if w.get("sentence_audio_path"))
             + (1 if intro_audio_path else 0)
             + (1 if outro_audio_path else 0)
             + (1 if ding_path else 0)
